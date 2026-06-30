@@ -176,8 +176,8 @@ int main() {
                     }
 
                     // c) Window resize border?
-                    if (!gw) gw = windowAt(mp); // refresh after button checks
                     // Check all windows for resize border hit (highest z first)
+                    bool startedResize = false;
                     {
                         std::vector<size_t> idxs;
                         for (size_t i = 0; i < windows.size(); ++i) idxs.push_back(i);
@@ -196,12 +196,13 @@ int main() {
                                     windows[i].titleBar.getSize().x,
                                     windows[i].titleBar.getSize().x + windows[i].body.getSize().y
                                 };
-                                gw = nullptr; // suppress further actions
+                                startedResize = true;
                                 break;
                             }
                         }
                     }
-                    if (gw == nullptr) continue;
+                    if (startedResize) continue;
+
 
                     // d) Window title bar? (start drag + focus)
                     gw = windowAt(mp);
@@ -324,9 +325,6 @@ int main() {
                         int captured = ii;
                         ctxMenu.show({static_cast<float>(mp.x), static_cast<float>(mp.y)},
                         {
-                            {"Open", [&openWindow, captured, &icons]() {
-                                openWindow(icons[captured].appType);
-                            }},
                             {"Properties", [&openWindow]() {
                                 openWindow("notepad");
                             }},
