@@ -1,7 +1,8 @@
 #include <SFML/Graphics.hpp>
 #include "DesktopGame.hpp"
-#include <iostream>
 #include <algorithm>
+#include <iostream>
+#include <optional>
 
 int main() {
     // ── Window ─────────────────────────────────────────────
@@ -28,19 +29,92 @@ int main() {
         bgSprite->setScale({WIN_W / texSize.x, WIN_H / texSize.y});
     }
 
+    // ── Windows XP Luna Textures ───────────────────────────
+    sf::Texture startTex;
+    sf::Texture notepadTex;
+    sf::Texture calcTex;
+    sf::Texture folderTex;
+    sf::Texture recycleTex;
+
+    auto loadXpTexture = [](sf::Texture& tex, const std::string& path) -> bool {
+        sf::Image img;
+        if (img.loadFromFile(path)) {
+            // BFS Flood Fill to mask out outer blackish background
+            sf::Vector2u size = img.getSize();
+            std::vector<bool> visited(size.x * size.y, false);
+            std::vector<sf::Vector2i> q;
+            q.reserve(size.x * size.y);
+
+            auto isBlackish = [](sf::Color c) {
+                // Threshold of 55: anything darker than RGB(55,55,55) is blackish background
+                return (c.r < 55 && c.g < 55 && c.b < 55);
+            };
+
+            // 1. Add all border pixels to queue
+            for (unsigned int x = 0; x < size.x; ++x) {
+                q.push_back({static_cast<int>(x), 0});
+                q.push_back({static_cast<int>(x), static_cast<int>(size.y - 1)});
+                visited[0 * size.x + x] = true;
+                visited[(size.y - 1) * size.x + x] = true;
+            }
+            for (unsigned int y = 0; y < size.y; ++y) {
+                q.push_back({0, static_cast<int>(y)});
+                q.push_back({static_cast<int>(size.x - 1), static_cast<int>(y)});
+                visited[y * size.x + 0] = true;
+                visited[y * size.x + (size.x - 1)] = true;
+            }
+
+            // 2. BFS Flood Fill
+            size_t head = 0;
+            while (head < q.size()) {
+                sf::Vector2i curr = q[head++];
+                sf::Color c = img.getPixel(sf::Vector2u(curr.x, curr.y));
+
+                if (isBlackish(c)) {
+                    // Set transparent
+                    img.setPixel(sf::Vector2u(curr.x, curr.y), sf::Color(c.r, c.g, c.b, 0));
+
+                    const int dx[] = {0, 0, 1, -1};
+                    const int dy[] = {1, -1, 0, 0};
+                    for (int i = 0; i < 4; ++i) {
+                        int nx = curr.x + dx[i];
+                        int ny = curr.y + dy[i];
+                        if (nx >= 0 && nx < static_cast<int>(size.x) &&
+                            ny >= 0 && ny < static_cast<int>(size.y)) {
+                            size_t idx = static_cast<size_t>(ny) * size.x + static_cast<size_t>(nx);
+                            if (!visited[idx]) {
+                                visited[idx] = true;
+                                q.push_back({nx, ny});
+                            }
+                        }
+                    }
+                }
+            }
+
+            return tex.loadFromImage(img);
+        }
+        return false;
+    };
+
+    bool startLoaded = loadXpTexture(startTex, "assets/start.jpg");
+    bool notepadLoaded = loadXpTexture(notepadTex, "assets/notepad.jpg");
+    bool calcLoaded = loadXpTexture(calcTex, "assets/calculator.jpg");
+    bool folderLoaded = loadXpTexture(folderTex, "assets/folder.jpg");
+    bool recycleLoaded = loadXpTexture(recycleTex, "assets/recycle.jpg");
+
     // ── Desktop icons ──────────────────────────────────────
     std::vector<DesktopIcon> icons;
     icons.emplace_back(sf::Vector2f{30.f, 30.f},  sf::Vector2f{ICON_W, ICON_H},
-                       "Notepad",    "notepad",    font);
+                       "Notepad",    "notepad",    font, notepadLoaded ? &notepadTex : nullptr);
     icons.emplace_back(sf::Vector2f{30.f, 130.f}, sf::Vector2f{ICON_W, ICON_H},
-                       "Calculator", "calculator", font);
+                       "Calculator", "calculator", font, calcLoaded ? &calcTex : nullptr);
     icons.emplace_back(sf::Vector2f{30.f, 230.f}, sf::Vector2f{ICON_W, ICON_H},
-                       "Folder",     "folder",     font);
+                       "Folder",     "folder",     font, folderLoaded ? &folderTex : nullptr);
     icons.emplace_back(sf::Vector2f{30.f, 330.f}, sf::Vector2f{ICON_W, ICON_H},
-                       "Recycle",    "recycle",    font);
+                       "Recycle",    "recycle",    font, recycleLoaded ? &recycleTex : nullptr);
 
     // ── Taskbar ───────────────────────────────────────────
-    Taskbar taskbar(font);
+    Taskbar taskbar(font, startLoaded ? &startTex : nullptr);
 
     // ── Windows container ──────────────────────────────────
     std::vector<GameWindow> windows;
@@ -155,8 +229,7 @@ int main() {
                         if (!gw->isMaximized) {
                             // Save current state then maximize
                             gw->preMaxPos  = gw->titleBar.getPosition();
-                            gw->preMaxSize = {gw->titleBar.getSize().x,
-                                              gw->titleBar.getSize().x + gw->body.getSize().y};
+                            gw->preMaxSize = gw->bounds().size;
                             gw->isMaximized = true;
                             gw->setPos({0.f, 0.f});
                             gw->setSize({WIN_W, DESKTOP_H});
@@ -192,10 +265,7 @@ int main() {
                                 windows[i].isResizing = true;
                                 windows[i].resizeDir = rd;
                                 windows[i].resizeStartMouse = mp;
-                                windows[i].resizeStartSize = {
-                                    windows[i].titleBar.getSize().x,
-                                    windows[i].titleBar.getSize().x + windows[i].body.getSize().y
-                                };
+                                windows[i].resizeStartSize = windows[i].bounds().size;
                                 startedResize = true;
                                 break;
                             }
@@ -341,7 +411,7 @@ int main() {
                     {
                         {"New Folder", []() { /* no-op */ }},
                         {"Refresh", [&refreshTimer, &refreshClock]() {
-                            refreshTimer = 0.6f;
+                            refreshTimer = 0.2f;
                             refreshClock.restart();
                         }},
                     }, font);
@@ -405,21 +475,15 @@ int main() {
         }
 
         // ── Compute refresh animation ─────────────────────
-        sf::Vector2f shakeOffset = {0.f, 0.f};
         if (refreshTimer > 0.f) {
-            float elapsed = refreshClock.getElapsedTime().asSeconds();
             refreshTimer -= 1.f / 60.f;
-
-            // Icon shake: sinusoidal jitter during first 0.4s
-            float shakeAmt = (refreshTimer > 0.2f) ? 3.f : 1.5f;
-            shakeOffset = {
-                std::sin(elapsed * 80.f) * shakeAmt,
-                std::cos(elapsed * 95.f) * shakeAmt
-            };
         }
 
-        // 1. Icons (with optional shake offset)
-        for (const auto& ic : icons) ic.draw(window, shakeOffset);
+        // 1. Icons (with momentary Windows XP refresh blink - hide during first 0.1s of refresh)
+        bool hideIcons = (refreshTimer > 0.1f);
+        if (!hideIcons) {
+            for (const auto& ic : icons) ic.draw(window);
+        }
 
         // 2. Windows (sorted by zOrder)
         std::vector<GameWindow*> sortedWin;
@@ -436,36 +500,45 @@ int main() {
         // 4. Context menu (topmost)
         ctxMenu.draw(window);
 
-        // 5. Refresh animation overlay: scanline + flicker
-        if (refreshTimer > 0.f) {
-            float elapsed = refreshClock.getElapsedTime().asSeconds();
-            float progress = 1.f - (refreshTimer / 0.6f); // 0 → 1 as animation plays
-
-            // Scrolling laser scanline
-            float scanY = progress * WIN_H;
-            sf::RectangleShape scanLine({WIN_W, 4.f});
-            scanLine.setPosition({0.f, scanY});
-            scanLine.setFillColor(sf::Color(0, 255, 240, 160));
-            window.draw(scanLine);
-            // Second thinner glow line just below
-            sf::RectangleShape scanGlow({WIN_W, 8.f});
-            scanGlow.setPosition({0.f, scanY + 4.f});
-            scanGlow.setFillColor(sf::Color(0, 255, 240, 40));
-            window.draw(scanGlow);
-
-            // Full-screen flicker: only in first 0.15s of animation
-            if (refreshTimer > 0.45f) {
-                float flickerAlpha = (refreshTimer - 0.45f) / 0.15f * 60.f;
-                sf::RectangleShape flicker({WIN_W, WIN_H});
-                flicker.setFillColor(sf::Color(0, 240, 200, static_cast<uint8_t>(flickerAlpha)));
-                window.draw(flicker);
+        // 5. Dynamic cursor selection based on resize hover/dragging
+        const char* const* activeCursor = C::CursorPattern;
+        ResizeDir hoverDir = ResizeDir::None;
+        
+        // Check if any window is actively resizing
+        for (const auto& w : windows) {
+            if (w.isResizing) {
+                hoverDir = w.resizeDir;
+                break;
             }
         }
+        
+        // If not resizing, check if hover is over a resize border of the topmost window at mouse position
+        if (hoverDir == ResizeDir::None) {
+            sf::Vector2i mPos = sf::Mouse::getPosition(window);
+            std::vector<size_t> idxs;
+            for (size_t i = 0; i < windows.size(); ++i) idxs.push_back(i);
+            std::sort(idxs.begin(), idxs.end(), [&](size_t a, size_t b) {
+                return windows[a].zOrder > windows[b].zOrder;
+            });
+            for (size_t i : idxs) {
+                if (!windows[i].isOpen || windows[i].isMinimized) continue;
+                ResizeDir rd = windows[i].hitResizeBorder(mPos);
+                if (rd != ResizeDir::None) {
+                    hoverDir = rd;
+                    break;
+                }
+            }
+        }
+        
+        // Select cursor pattern
+        if      (hoverDir == ResizeDir::Right)       activeCursor = C::CursorResizeH;
+        else if (hoverDir == ResizeDir::Bottom)      activeCursor = C::CursorResizeV;
+        else if (hoverDir == ResizeDir::BottomRight) activeCursor = C::CursorResizeDiag;
 
-        // 6. Custom pixel cursor (above everything else)
+        // 6. Custom cursor drawing (above everything else)
         sf::Vector2i mPos = sf::Mouse::getPosition(window);
         if (mPos.x >= 0 && mPos.x < WIN_W && mPos.y >= 0 && mPos.y < WIN_H) {
-            drawPixelPattern(window, sf::Vector2f(static_cast<float>(mPos.x), static_cast<float>(mPos.y)), C::CursorPattern, 1.5f);
+            drawPixelPattern(window, sf::Vector2f(static_cast<float>(mPos.x), static_cast<float>(mPos.y)), activeCursor, 1.5f);
         }
 
         window.display();

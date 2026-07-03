@@ -16,24 +16,91 @@ constexpr int   DOUBLE_CLICK_MS = 600;
 
 // ── Color palette & Pixel Art ──────────────────────────────────
 namespace C {
-    // Cyberpunk pixel art color palette
-    inline const sf::Color DesktopBg      { 18,  12,  33 }; // Deep space/violet dark
-    inline const sf::Color TaskbarBg      { 30,  18,  54 }; // Dark purple
-    inline const sf::Color WindowTitle    { 85,  26, 139 }; // Deep violet titlebar
-    inline const sf::Color WindowBody     { 24,  16,  42 }; // Sunken dark violet body
-    inline const sf::Color WinTitleText   { 255,  85, 219 }; // Hot neon pink
-    inline const sf::Color TextWhite      { 235, 235, 255 }; // Light neon blue-white
-    inline const sf::Color CloseBtn       { 180,  20,  70 }; // Neon crimson close button
-    inline const sf::Color CloseBtnHov    { 240,  40, 110 }; // Active close button
-    inline const sf::Color MenuBg         { 20,  12,  38, 250 }; // Context menu background
-    inline const sf::Color MenuHover      { 255,   0, 127 }; // Neon pink selection
-    inline const sf::Color SelectBorder   { 0,  255, 240 }; // Neon cyan selection border
-    inline const sf::Color IconLabel      { 0,  255, 200 }; // Neon mint label
+    // Windows XP / Classic 3D color palette
+    inline const sf::Color DesktopBg      { 61,  130, 226 }; // Classic XP Blue
+    inline const sf::Color TaskbarBg      { 16,  61,  181 }; // XP Blue Dark
+    inline const sf::Color WindowTitle    { 25,  82,  171 }; // XP Titlebar Blue
+    inline const sf::Color WindowBody     { 236, 233, 216 }; // XP Window Body Cream-gray
+    inline const sf::Color WinTitleText   { 255, 255, 255 }; // White title text
+    inline const sf::Color TextWhite      { 0,   0,   0   }; // Black window body text
+    inline const sf::Color CloseBtn       { 224, 76,  44  }; // XP Orange-red close button
+    inline const sf::Color CloseBtnHov    { 240, 100, 70  }; // Hover close button
+    inline const sf::Color MenuBg         { 236, 233, 216 }; // XP Menu Bg
+    inline const sf::Color MenuHover      { 49,  106, 197 }; // XP Menu Hover Blue
+    inline const sf::Color SelectBorder   { 49,  106, 197 }; // XP Selection blue
+    inline const sf::Color IconLabel      { 255, 255, 255 }; // White label text
 
-    // Bevel highlights & shadows for pixel 3D style
-    inline const sf::Color BevelLight     { 255, 110, 220 }; // Cyberpunk neon pink highlight
-    inline const sf::Color BevelMedium    { 90,  30, 120 }; // Midtone border
-    inline const sf::Color BevelDark      { 10,   5,  20 }; // Dark shadows
+    // Windows XP Luna Theme Colors
+    inline const sf::Color XpBlueLight    { 36,  94,  219 }; // Top of taskbar gradient
+    inline const sf::Color XpBlueDark     { 16,  61,  181 }; // Bottom of taskbar gradient
+    inline const sf::Color XpBlueTray     { 9,   46,  140 }; // System tray / clock background
+    inline const sf::Color XpMenuBg       { 236, 233, 216 }; // Cream-gray context menu background
+    inline const sf::Color XpMenuHover    { 49,  106, 197 }; // Windows XP classic menu selection blue
+    inline const sf::Color XpMenuBorder   { 172, 168, 153 }; // Classic menu border gray
+    inline const sf::Color XpMenuText     { 0,   0,   0   }; // Black text for XP menu
+
+    // Bevel highlights & shadows for classic Windows 3D style
+    inline const sf::Color BevelLight     { 255, 255, 255 }; // White highlight
+    inline const sf::Color BevelMedium    { 212, 208, 200 }; // Light gray midtone
+    inline const sf::Color BevelDark      { 113, 111, 100 }; // Dark gray shadow
+
+    // Windows XP sizing cursor patterns
+    inline const char* const CursorResizeH[16] = {
+        "................",
+        "................",
+        "................",
+        "....K.......K...",
+        "...KK.......KK..",
+        "..KWW.......WWK.",
+        ".KWWWWKKKKKWWWWK",
+        "KWWWWWWWWWWWWWWK",
+        ".KWWWWKKKKKWWWWK",
+        "..KWW.......WWK.",
+        "...KK.......KK..",
+        "....K.......K...",
+        "................",
+        "................",
+        "................",
+        "................"
+    };
+
+    inline const char* const CursorResizeV[16] = {
+        "......K.........",
+        ".....KKK........",
+        "....KWWWK.......",
+        "....KWWWK.......",
+        ".....KKK........",
+        ".....KWK........",
+        ".....KWK........",
+        ".....KWK........",
+        ".....KWK........",
+        ".....KWK........",
+        ".....KKK........",
+        "....KWWWK.......",
+        "....KWWWK.......",
+        ".....KKK........",
+        "......K.........",
+        "................"
+    };
+
+    inline const char* const CursorResizeDiag[16] = {
+        "KKKKK...........",
+        "KWWWWK..........",
+        "KWWKK...........",
+        "KWK.KK..........",
+        "KWK..KK.........",
+        ".KK...KK........",
+        ".......KK.......",
+        "........KK......",
+        ".........KK...KK",
+        "..........KK..KW",
+        "...........KK.KW",
+        "..........KKKWWK",
+        ".........KWWWWK.",
+        "..........KKKKK.",
+        "................",
+        "................"
+    };
 
     // Custom 16x16 pixel-art patterns
     inline const char* const NotepadIconPattern[16] = {
@@ -135,13 +202,13 @@ namespace C {
         switch (c) {
             case 'W': return sf::Color::White;
             case 'K': return sf::Color::Black;
-            case 'Y': return sf::Color(255, 230, 100);  // Neon Yellow
-            case 'C': return sf::Color(0, 255, 240);    // Neon Cyan
-            case 'B': return sf::Color(0, 100, 220);    // Cyberpunk Blue
-            case 'g': return sf::Color(50, 220, 100);   // Neon Green
-            case 'R': return sf::Color(255, 0, 100);    // Neon Magenta/Red
-            case 'O': return sf::Color(240, 120, 30);   // Electric Orange
-            case 'G': return sf::Color(120, 120, 140);  // Retro Gray
+            case 'Y': return sf::Color(245, 200, 110);  // XP Folder Yellow
+            case 'C': return sf::Color(120, 160, 215);  // Notepad Line Blue
+            case 'B': return sf::Color(190, 200, 215);  // Calculator Silver-Blue
+            case 'g': return sf::Color(50, 150, 70);    // Soft LCD Green
+            case 'R': return sf::Color(200, 50, 50);    // Calculator C Button Red
+            case 'O': return sf::Color(210, 130, 40);   // Folder Shadow Orange
+            case 'G': return sf::Color(160, 160, 160);  // Recycle Bin Gray
             default: return sf::Color::Transparent;
         }
     }
@@ -161,9 +228,10 @@ public:
     sf::Text     labelText;
     std::string  appType;
     bool         selected = false;
+    const sf::Texture* texturePtr = nullptr;
 
     DesktopIcon(sf::Vector2f p, sf::Vector2f sz, const std::string& lbl,
-                const std::string& app, const sf::Font& font);
+                const std::string& app, const sf::Font& font, const sf::Texture* tex = nullptr);
 
     bool contains(sf::Vector2i mousePos) const;
     void draw(sf::RenderWindow& win, sf::Vector2f offset = {0.f, 0.f}) const;
@@ -263,8 +331,9 @@ public:
     // window buttons drawn as small rectangles + labels
     std::vector<sf::RectangleShape> winBtns;
     std::vector<sf::Text>           winBtnLabels;
+    const sf::Texture* startTexPtr = nullptr;
 
-    Taskbar(const sf::Font& font);
+    Taskbar(const sf::Font& font, const sf::Texture* startTex = nullptr);
 
     void update(std::vector<GameWindow>& windows, const sf::Font& font);
     int  windowBtnAt(sf::Vector2i mousePos) const;

@@ -32,10 +32,10 @@ void drawDoubleBevel(sf::RenderWindow& win, sf::FloatRect rect, bool raised) {
     float t = 2.f; // Thickness of each bevel line
     
     // Colors
-    sf::Color outerTL = raised ? sf::Color(255, 180, 240) : C::BevelDark;
+    sf::Color outerTL = raised ? sf::Color::White : C::BevelDark;
     sf::Color innerTL = raised ? C::BevelLight : C::BevelMedium;
     sf::Color innerBR = raised ? C::BevelMedium : C::BevelLight;
-    sf::Color outerBR = raised ? C::BevelDark : sf::Color(255, 180, 240);
+    sf::Color outerBR = raised ? C::BevelDark : sf::Color::White;
 
     // 1. Outer bevel
     // Top
@@ -96,15 +96,16 @@ void drawDoubleBevel(sf::RenderWindow& win, sf::FloatRect rect, bool raised) {
 //  DesktopIcon
 // ═══════════════════════════════════════════════════════════════
 DesktopIcon::DesktopIcon(sf::Vector2f p, sf::Vector2f sz, const std::string& lbl,
-                         const std::string& app, const sf::Font& font)
+                         const std::string& app, const sf::Font& font, const sf::Texture* tex)
     : pos(p), size(sz), label(lbl), appType(app),
-      labelText(font, sf::String::fromUtf8(lbl.begin(), lbl.end()), 13)
+      labelText(font, sf::String::fromUtf8(lbl.begin(), lbl.end()), 13),
+      texturePtr(tex)
 {
     shape.setSize(size);
     shape.setPosition(pos);
-    shape.setFillColor(sf::Color::Transparent); // Not drawing shape directly
+    shape.setFillColor(sf::Color::Transparent);
 
-    labelText.setFillColor(C::IconLabel);
+    labelText.setFillColor(sf::Color::White); // Classic Windows desktop text color is white
     // center text under icon
     sf::FloatRect tb = labelText.getLocalBounds();
     labelText.setOrigin({tb.position.x + tb.size.x / 2.f, tb.position.y});
@@ -119,30 +120,51 @@ bool DesktopIcon::contains(sf::Vector2i mp) const {
 }
 
 void DesktopIcon::draw(sf::RenderWindow& win, sf::Vector2f offset) const {
-    const char* const* pattern = nullptr;
-    if (appType == "notepad")         pattern = C::NotepadIconPattern;
-    else if (appType == "calculator") pattern = C::CalculatorIconPattern;
-    else if (appType == "folder")     pattern = C::FolderIconPattern;
-    else if (appType == "recycle")    pattern = C::RecycleIconPattern;
-    
     sf::Vector2f drawPos = pos + offset;
     
-    if (pattern) {
-        drawPixelPattern(win, drawPos, pattern, 4.f); // 16x16 icon drawn at 4x scale (64x64)
+    if (texturePtr) {
+        sf::Sprite sp(*texturePtr);
+        sp.setPosition(drawPos);
+        sf::Vector2u texSize = texturePtr->getSize();
+        sp.setScale({size.x / texSize.x, size.y / texSize.y});
+        win.draw(sp);
+    } else {
+        // Fallback to pixel art if no texture loaded
+        const char* const* pattern = nullptr;
+        if (appType == "notepad")         pattern = C::NotepadIconPattern;
+        else if (appType == "calculator") pattern = C::CalculatorIconPattern;
+        else if (appType == "folder")     pattern = C::FolderIconPattern;
+        else if (appType == "recycle")    pattern = C::RecycleIconPattern;
+        
+        if (pattern) {
+            drawPixelPattern(win, drawPos, pattern, 4.f);
+        }
     }
 
-    if (selected) {
-        // Neon cyan dashed/solid selection rectangle around the icon
-        sf::RectangleShape selRect({size.x + 8.f, size.y + 8.f});
-        selRect.setPosition({drawPos.x - 4.f, drawPos.y - 4.f});
-        selRect.setFillColor(sf::Color::Transparent);
-        selRect.setOutlineColor(C::SelectBorder);
-        selRect.setOutlineThickness(2.f);
-        win.draw(selRect);
-    }
-    
     sf::Text shiftedLabel = labelText;
     shiftedLabel.setPosition({drawPos.x + size.x / 2.f, drawPos.y + size.y + 8.f});
+
+    if (selected) {
+        // Semi-transparent blue selection box overlay on the icon itself (like standard OS selection)
+        sf::RectangleShape selRect({size.x + 8.f, size.y + 8.f});
+        selRect.setPosition({drawPos.x - 4.f, drawPos.y - 4.f});
+        selRect.setFillColor(sf::Color(49, 106, 197, 60)); // Transparent blue
+        selRect.setOutlineColor(C::XpBlueLight);
+        selRect.setOutlineThickness(1.f);
+        win.draw(selRect);
+
+        // Highlight box for the text label
+        sf::FloatRect tb = shiftedLabel.getGlobalBounds();
+        sf::RectangleShape textBg({tb.size.x + 8.f, tb.size.y + 4.f});
+        textBg.setPosition({tb.position.x - 4.f, tb.position.y - 2.f});
+        textBg.setFillColor(sf::Color(49, 106, 197)); // Windows selection blue
+        win.draw(textBg);
+        
+        shiftedLabel.setFillColor(sf::Color::White);
+    } else {
+        shiftedLabel.setFillColor(sf::Color::White);
+    }
+    
     win.draw(shiftedLabel);
 }
 
@@ -168,14 +190,15 @@ void ContextMenu::show(sf::Vector2f p, const std::vector<MenuItem>& newItems,
 
     background.setSize({width, h});
     background.setPosition(position);
+    background.setFillColor(C::XpMenuBg); // XP Classic menu gray
 
     itemTexts.clear();
     for (size_t i = 0; i < items.size(); ++i) {
         sf::Text t(font);
         t.setString("  " + items[i].label);
-        t.setCharacterSize(15);
-        t.setFillColor(C::TextWhite);
-        t.setPosition({position.x + 4.f, position.y + 2.f + i * itemHeight});
+        t.setCharacterSize(14);
+        t.setFillColor(C::XpMenuText); // Black text for XP menu
+        t.setPosition({position.x + 4.f, position.y + 3.f + i * itemHeight});
         itemTexts.push_back(t);
     }
     visible = true;
@@ -210,17 +233,33 @@ void ContextMenu::updateHover(sf::Vector2i mp) {
 
 void ContextMenu::draw(sf::RenderWindow& win) const {
     if (!visible) return;
+    
+    // Draw background
     win.draw(background);
-    drawDoubleBevel(win, background.getGlobalBounds(), true); // 3D bevel around context menu
+    
+    // Draw classic Windows XP single-pixel gray border around the menu
+    sf::RectangleShape borderRect(background.getSize());
+    borderRect.setPosition(background.getPosition());
+    borderRect.setFillColor(sf::Color::Transparent);
+    borderRect.setOutlineColor(C::XpMenuBorder);
+    borderRect.setOutlineThickness(1.f);
+    win.draw(borderRect);
+    
     for (size_t i = 0; i < itemTexts.size(); ++i) {
+        sf::Text itemText = itemTexts[i];
         if (static_cast<int>(i) == hoveredIdx) {
-            // Adjust selection highlight box so it sits inside the bevel borders (offset by 4px)
-            sf::RectangleShape hoverBg({width - 8.f, itemHeight - 2.f});
-            hoverBg.setPosition({position.x + 4.f, position.y + 1.f + i * itemHeight});
-            hoverBg.setFillColor(C::MenuHover);
+            // Draw Luna Selection Blue block
+            sf::RectangleShape hoverBg({width - 6.f, itemHeight - 2.f});
+            hoverBg.setPosition({position.x + 3.f, position.y + 1.f + i * itemHeight});
+            hoverBg.setFillColor(C::XpMenuHover); // Luna blue
             win.draw(hoverBg);
+            
+            // Text color changes to white on hover
+            itemText.setFillColor(sf::Color::White);
+        } else {
+            itemText.setFillColor(C::XpMenuText); // Black text
         }
-        win.draw(itemTexts[i]);
+        win.draw(itemText);
     }
 }
 
@@ -359,7 +398,7 @@ void GameWindow::handleTextInput(uint32_t unicode) {
                 puzzleSolved = true;
             } else {
                 bodyText2.setString("Wrong! Try again...");
-                bodyText2.setFillColor(sf::Color(240, 100, 100));
+                bodyText2.setFillColor(sf::Color(200, 0, 0));
             }
         }
         // Calculator code
@@ -369,7 +408,7 @@ void GameWindow::handleTextInput(uint32_t unicode) {
                 puzzleSolved = true;
             } else {
                 bodyText2.setString("Wrong code! Try again...");
-                bodyText2.setFillColor(sf::Color(240, 100, 100));
+                bodyText2.setFillColor(sf::Color(200, 0, 0));
             }
         }
         // Folder final answer
@@ -379,7 +418,7 @@ void GameWindow::handleTextInput(uint32_t unicode) {
                 puzzleSolved = true;
             } else {
                 bodyText2.setString("That's not right...");
-                bodyText2.setFillColor(sf::Color(240, 100, 100));
+                bodyText2.setFillColor(sf::Color(200, 0, 0));
             }
         }
         userInput.clear();
@@ -410,7 +449,7 @@ void GameWindow::updateContent() {
                                "The password for the\n"
                                "Calculator is: 1337");
             bodyText2.setString("Puzzle solved!");
-            bodyText2.setFillColor(sf::Color(100, 240, 100));
+            bodyText2.setFillColor(sf::Color(0, 150, 0));
         }
     }
     else if (appType == "calculator") {
@@ -428,7 +467,7 @@ void GameWindow::updateContent() {
                 "Hint: The Folder needs\n"
                 "A x 11 = ?");
             bodyText2.setString("Calculator unlocked!");
-            bodyText2.setFillColor(sf::Color(100, 240, 100));
+            bodyText2.setFillColor(sf::Color(0, 150, 0));
         }
     }
     else if (appType == "folder") {
@@ -447,7 +486,7 @@ void GameWindow::updateContent() {
                 "You have mastered the desktop!\n"
                 "Congratulations!");
             bodyText2.setString("ALL PUZZLES COMPLETE!");
-            bodyText2.setFillColor(sf::Color(255, 220, 60));
+            bodyText2.setFillColor(sf::Color(0, 120, 180));
         }
     }
 }
@@ -526,14 +565,15 @@ void GameWindow::draw(sf::RenderWindow& win) const {
 // ═══════════════════════════════════════════════════════════════
 //  Taskbar
 // ═══════════════════════════════════════════════════════════════
-Taskbar::Taskbar(const sf::Font& font)
-    : clockText(font, "", 14)
+Taskbar::Taskbar(const sf::Font& font, const sf::Texture* startTex)
+    : clockText(font, "", 14),
+      startTexPtr(startTex)
 {
     bg.setSize({WIN_W, h});
     bg.setPosition({0.f, DESKTOP_H});
-    bg.setFillColor(C::TaskbarBg);
+    bg.setFillColor(C::XpBlueDark);
 
-    clockText.setFillColor(C::TextWhite);
+    clockText.setFillColor(sf::Color(220, 240, 255)); // XP Clock text color (light blue-white)
 }
 
 void Taskbar::update(std::vector<GameWindow>& windows, const sf::Font& font) {
@@ -545,33 +585,40 @@ void Taskbar::update(std::vector<GameWindow>& windows, const sf::Font& font) {
     char buf[16];
     snprintf(buf, sizeof(buf), "%02d:%02d", hours, minutes);
     clockText.setString(buf);
-    clockText.setPosition({WIN_W - 70.f, DESKTOP_H + 9.f}); // Adjusted to fit sunken box
+    
+    // Position clock text inside the system tray box on the right
+    sf::FloatRect ctBounds = clockText.getLocalBounds();
+    clockText.setOrigin({0.f, ctBounds.size.y / 2.f});
+    clockText.setPosition({WIN_W - 75.f, DESKTOP_H + h / 2.f - 2.f});
 
-    // Window buttons
+    // Window buttons - starting after the green "start" button (at x = 120)
     winBtns.clear();
     winBtnLabels.clear();
-    float bx = 8.f;
+    float bx = 125.f;
     for (size_t i = 0; i < windows.size(); ++i) {
         if (!windows[i].isOpen) continue;
-        sf::RectangleShape btn({110.f, 24.f});
-        btn.setPosition({bx, DESKTOP_H + 6.f});
+        sf::RectangleShape btn({110.f, 28.f});
+        btn.setPosition({bx, DESKTOP_H + (h - 28.f) / 2.f});
         
-        // Use custom colors indicating minimized (raised) vs active (sunken)
+        // XP Luna active (dark blue) vs inactive (lighter blue-gray) colors
         btn.setFillColor(windows[i].isMinimized
-            ? sf::Color(65, 40, 100)  // Inactive / minimized color
-            : sf::Color(40, 25, 70)); // Active color
+            ? sf::Color(60, 130, 226)  // Inactive XP blue
+            : sf::Color(25, 82, 171)); // Active dark XP blue
             
         winBtns.push_back(btn);
 
         sf::Text lbl(font);
         std::string title;
         if (windows[i].appType == "notepad")    title = "Notepad";
-        if (windows[i].appType == "calculator") title = "Calc";
+        if (windows[i].appType == "calculator") title = "Calculator";
         if (windows[i].appType == "folder")     title = "Folder";
         lbl.setString(title);
         lbl.setCharacterSize(12);
-        lbl.setFillColor(C::TextWhite);
-        lbl.setPosition({bx + 8.f, DESKTOP_H + 10.f});
+        lbl.setFillColor(sf::Color::White);
+        
+        sf::FloatRect lblB = lbl.getLocalBounds();
+        lbl.setOrigin({0.f, lblB.size.y / 2.f});
+        lbl.setPosition({bx + 8.f, DESKTOP_H + h / 2.f - 2.f});
         winBtnLabels.push_back(lbl);
 
         bx += 118.f;
@@ -589,25 +636,58 @@ int Taskbar::windowBtnAt(sf::Vector2i mp) const {
 }
 
 void Taskbar::draw(sf::RenderWindow& win) const {
-    // Draw taskbar background and a raised bevel top outline
-    win.draw(bg);
-    drawDoubleBevel(win, bg.getGlobalBounds(), true);
+    // 1. Draw smooth vertical gradient for the Windows XP Luna taskbar
+    sf::VertexArray grad(sf::PrimitiveType::TriangleStrip, 4);
+    grad[0] = sf::Vertex{ {0.f, DESKTOP_H}, C::XpBlueLight };
+    grad[1] = sf::Vertex{ {WIN_W, DESKTOP_H}, C::XpBlueLight };
+    grad[2] = sf::Vertex{ {0.f, WIN_H}, C::XpBlueDark };
+    grad[3] = sf::Vertex{ {WIN_W, WIN_H}, C::XpBlueDark };
+    win.draw(grad);
     
-    // Draw Sunken Clock Window Box
-    sf::FloatRect clockRect({WIN_W - 80.f, DESKTOP_H + 6.f}, {72.f, 24.f});
+    // Draw classic XP taskbar top highlight line
+    sf::RectangleShape topHighlight({WIN_W, 2.f});
+    topHighlight.setPosition({0.f, DESKTOP_H});
+    topHighlight.setFillColor(sf::Color(100, 160, 255));
+    win.draw(topHighlight);
+
+    // 2. Draw Start Button on the left
+    if (startTexPtr) {
+        sf::Sprite startSp(*startTexPtr);
+        float startBtnH = h - 16.f; // 48px
+        startSp.setPosition({8.f, DESKTOP_H + (h - startBtnH) / 2.f});
+        sf::Vector2u texSize = startTexPtr->getSize();
+        startSp.setScale({110.f / texSize.x, startBtnH / texSize.y});
+        win.draw(startSp);
+    } else {
+        // Fallback start button (green block)
+        sf::RectangleShape startFallback({110.f, h - 16.f});
+        startFallback.setPosition({8.f, DESKTOP_H + 8.f});
+        startFallback.setFillColor(sf::Color(50, 180, 50));
+        win.draw(startFallback);
+        drawDoubleBevel(win, startFallback.getGlobalBounds(), true);
+    }
+    
+    // 3. Draw System Tray (Clock box) on the right
+    sf::FloatRect clockRect({WIN_W - 100.f, DESKTOP_H + 6.f}, {92.f, h - 12.f});
     sf::RectangleShape clockBg(clockRect.size);
     clockBg.setPosition(clockRect.position);
-    clockBg.setFillColor(sf::Color(15, 8, 25));
+    clockBg.setFillColor(C::XpBlueTray); // Windows XP dark blue tray
     win.draw(clockBg);
-    drawDoubleBevel(win, clockRect, false); // Sunken clock bevel
+    
+    // Add vertical divider line on the left of system tray
+    sf::RectangleShape trayDivider({2.f, h});
+    trayDivider.setPosition({WIN_W - 102.f, DESKTOP_H});
+    trayDivider.setFillColor(sf::Color(16, 50, 150));
+    win.draw(trayDivider);
+    
     win.draw(clockText);
     
-    // Draw Window buttons
+    // 4. Draw Window buttons
     for (size_t i = 0; i < winBtns.size(); ++i) {
         win.draw(winBtns[i]);
         
-        // Deduced active state from color: Color(40,25,70) is sunken, others are raised
-        bool isSunken = winBtns[i].getFillColor() == sf::Color(40, 25, 70);
+        bool isSunken = winBtns[i].getFillColor() == sf::Color(25, 82, 171); // Active state
+        // For XP Luna buttons, draw 3D bevels
         drawDoubleBevel(win, winBtns[i].getGlobalBounds(), !isSunken);
         
         // Draw label (shift text slightly down-right if sunken for tactile effect)
