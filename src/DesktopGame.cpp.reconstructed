@@ -1,0 +1,797 @@
+#pragma execution_character_set("utf-8")
+#include "DesktopGame.hpp"
+#include <iostream>
+#include <cmath>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+
+using namespace std;
+
+Desktop* g_Desktop = nullptr;
+
+// ── Helpers ────────────────────────────────────────────────────
+void drawDoubleBevel(sf::RenderWindow& win, sf::FloatRect rect, bool raised) {
+    sf::RectangleShape line;
+    // Outer
+    line.setFillColor(raised ? C::BevelLight : C::BevelDark);
+    line.setSize({rect.width, 2.f});
+    line.setPosition(rect.left, rect.top);
+    win.draw(line);
+    line.setSize({2.f, rect.height});
+    win.draw(line);
+
+    line.setFillColor(raised ? C::BevelDark : C::BevelLight);
+    line.setSize({rect.width, 2.f});
+    line.setPosition(rect.left, rect.top + rect.height - 2.f);
+    win.draw(line);
+    line.setSize({2.f, rect.height});
+    line.setPosition(rect.left + rect.width - 2.f, rect.top);
+    win.draw(line);
+
+    // Inner
+    sf::FloatRect in(rect.left + 2.f, rect.top + 2.f, rect.width - 4.f, rect.height - 4.f);
+    line.setFillColor(raised ? C::BevelMedium : C::BevelMedium);
+    line.setSize({in.width, 2.f});
+    line.setPosition(in.left, in.top);
+    win.draw(line);
+    line.setSize({2.f, in.height});
+    win.draw(line);
+
+    line.setFillColor(raised ? C::BevelMedium : C::BevelLight); 
+    line.setSize({in.width, 2.f});
+    line.setPosition(in.left, in.top + in.height - 2.f);
+    win.draw(line);
+    line.setSize({2.f, in.height});
+    line.setPosition(in.left + in.width - 2.f, in.top);
+    win.draw(line);
+}
+
+std::string getTimeString() {
+    time_t now = time(nullptr);
+    tm* ltm = localtime(&now);
+    std::stringstream ss;
+    ss << std::setfill('0') << std::setw(2) << ltm->tm_hour << ":" 
+       << std::setfill('0') << std::setw(2) << ltm->tm_min;
+    return ss.str();
+}
+
+// ── 2. ContextMenu ─────────────────────────────────────────────
+ContextMenu::ContextMenu() : UIComponent({0.f, 0.f}, 300.f, 0.f), visible(false) {
+    background.setFillColor(C::MenuBg);
+}
+
+void ContextMenu::setFont(const sf::Font& font) { menuFont = font; }
+
+void ContextMenu::show(sf::Vector2f p, const std::vector<MenuItem>& newItems) {
+    items = newItems;
+    position = p;
+    height = items.size() * itemHeight + 4.f;
+    background.setSize({width, height});
+    
+    itemTexts.clear();
+    for (const auto& item : items) {
+        sf::Text t(item.label, menuFont, 14);
+        itemTexts.push_back(t);
+    }
+    visible = true;
+    hoveredIdx = -1;
+}
+
+void ContextMenu::hide() { visible = false; }
+
+bool ContextMenu::isMouseHit(sf::Vector2f mp) {
+    if (!visible) return false;
+    return mp.x >= position.x && mp.x <= position.x + width &&
+           mp.y >= position.y && mp.y <= position.y + height;
+}
+
+int ContextMenu::itemAt(sf::Vector2i mp) const {
+    if (mp.x < position.x || mp.x > position.x + width || mp.y < position.y || mp.y > position.y + height) return -1;
+    int idx = (mp.y - position.y - 2.f) / itemHeight;
+    if (idx >= 0 && idx < items.size()) return idx;
+    return -1;
+}
+
+void ContextMenu::updateHover(sf::Vector2i mp) { hoveredIdx = itemAt(mp); }
+
+void ContextMenu::render(sf::RenderWindow& win) {
+    if (!visible) return;
+    background.setPosition(position);
+    win.draw(background);
+    drawDoubleBevel(win, {position.x, position.y, width, height}, true);
+
+    for (size_t i = 0; i < items.size(); ++i) {
+        float y = position.y + 2.f + i * itemHeight;
+        if (i == hoveredIdx && items[i].enabled) {
+            sf::RectangleShape hovRect({width - 4.f, itemHeight});
+            hovRect.setPosition(position.x + 2.f, y);
+            hovRect.setFillColor(C::MenuHover);
+            win.draw(hovRect);
+            itemTexts[i].setFillColor(sf::Color::White);
+        } else {
+            itemTexts[i].setFillColor(items[i].enabled ? C::TextWhite : sf::Color(150, 150, 150));
+        }
+        itemTexts[i].setPosition(position.x + 10.f, y + 4.f);
+        win.draw(itemTexts[i]);
+    }
+}
+
+// ── 3. DesktopIcon ─────────────────────────────────────────────
+DesktopIcon::DesktopIcon(sf::Vector2f p, const std::string& lbl, const std::string& texPath, const sf::Font& font)
+    : UIComponent(p, ICON_W, ICON_H), label(lbl) {
+    if (iconTex.loadFromFile(texPath)) {
+        iconTex.setSmooth(true);
+        iconSpr.setTexture(iconTex);
+    }
+    labelText.setFont(font);
+    labelText.setString(label);
+    labelText.setCharacterSize(14);
+    labelText.setFillColor(sf::Color::White);
+    rightMenu.setFont(font);
+}
+
+void DesktopIcon::setupRightMenu() {
+    rightMenu.items.clear();
+    rightMenu.items.push_back({"Open", [this]() { this->onClick(); }, true});
+}
+
+void DesktopIcon::render(sf::RenderWindow& win) {
+    if (!visible) return;
+    iconSpr.setPosition(position);
+    
+    sf::FloatRect textBounds = labelText.getLocalBounds();
+    labelText.setPosition(position.x + (width - textBounds.width) / 2.f, position.y + height + 5.f);
+
+    if (selected) {
+        iconSpr.setColor(sf::Color(128, 128, 255, 200));
+        sf::RectangleShape textBg({textBounds.width + 10.f, textBounds.height + 6.f});
+        textBg.setPosition(labelText.getPosition().x - 5.f, labelText.getPosition().y - 2.f);
+        textBg.setFillColor(sf::Color(10, 36, 106));
+        win.draw(textBg);
+    } else {
+        iconSpr.setColor(sf::Color::White);
+    }
+
+    win.draw(iconSpr);
+    win.draw(labelText);
+    if (rightMenu.visible) rightMenu.render(win);
+}
+
+bool DesktopIcon::isMouseHit(sf::Vector2f mp) {
+    if (!visible) return false;
+    return mp.x >= position.x && mp.x <= position.x + width &&
+           mp.y >= position.y && mp.y <= position.y + height + 30.f; // Including label
+}
+
+// ── 4. GameWindow ──────────────────────────────────────────────
+GameWindow::GameWindow(const std::string& t, sf::Vector2f p, float w, float h, const sf::Font& font)
+    : UIComponent(p, w, h), title(t) {
+    
+    titleBar.setFillColor(C::WindowTitle);
+    closeBtn.setFillColor(C::CloseBtn);
+    frame.setFillColor(C::WindowBody);
+
+    titleText.setFont(font);
+    titleText.setString(title);
+    titleText.setCharacterSize(14);
+    titleText.setFillColor(C::WinTitleText);
+}
+
+void GameWindow::dragUpdate(sf::Vector2f mp) {
+    if (isDraging) {
+        position = mp - dragOffset;
+        position.x = std::max(0.f, std::min(position.x, WIN_W - width));
+        position.y = std::max(0.f, std::min(position.y, DESKTOP_H - height));
+    }
+}
+
+void GameWindow::closeWindow() {
+    isOpen = false;
+}
+
+bool GameWindow::containsTitleBar(sf::Vector2f mp) const {
+    return mp.x >= position.x + 4.f && mp.x <= position.x + width - 8.f &&
+           mp.y >= position.y + 4.f && mp.y <= position.y + 28.f;
+}
+
+bool GameWindow::containsCloseBtn(sf::Vector2f mp) const {
+    return mp.x >= position.x + width - 28.f && mp.x <= position.x + width - 8.f &&
+           mp.y >= position.y + 6.f && mp.y <= position.y + 26.f;
+}
+
+bool GameWindow::isMouseHit(sf::Vector2f mp) {
+    if (!visible || !isOpen || isMinimized) return false;
+    return mp.x >= position.x && mp.x <= position.x + width &&
+           mp.y >= position.y && mp.y <= position.y + height;
+}
+
+void GameWindow::renderFrame(sf::RenderWindow& win) {
+    // Background and Bevel
+    frame.setSize({width, height});
+    frame.setPosition(position);
+    win.draw(frame);
+    drawDoubleBevel(win, {position.x, position.y, width, height}, true);
+
+    // Titlebar
+    titleBar.setSize({width - 8.f, 24.f});
+    titleBar.setPosition(position.x + 4.f, position.y + 4.f);
+    win.draw(titleBar);
+    titleText.setPosition(position.x + 9.f, position.y + 9.f);
+    win.draw(titleText);
+
+    // Close button
+    closeBtn.setSize({20.f, 20.f});
+    closeBtn.setPosition(position.x + width - 28.f, position.y + 6.f);
+    win.draw(closeBtn);
+    drawDoubleBevel(win, {position.x + width - 28.f, position.y + 6.f, 20.f, 20.f}, true);
+}
+
+void GameWindow::render(sf::RenderWindow& win) {
+    if (!visible || !isOpen || isMinimized) return;
+    renderFrame(win);
+    renderContent(win);
+}
+
+// ── 7. Derived Icons ───────────────────────────────────────────
+void NotepadIcon::onClick() {
+    std::string text = "这里是记事本应用。\n请打开“我的文档”查看核心机密文件。";
+    if (g_Desktop) g_Desktop->addWindow(new TextReadWin(label, text, {150.f, 150.f}, 500.f, 400.f, g_Desktop->systemFont));
+}
+
+void NotepadIcon::setupRightMenu() {
+    rightMenu.items.clear();
+    rightMenu.items.push_back({"Open", [this]() { this->onClick(); }, true});
+    rightMenu.items.push_back({"[提示:星舰首飞在网页,密码不止一组]", [](){}, false});
+}
+
+void MyDocIcon::onClick() {
+    if (g_Desktop) g_Desktop->addWindow(new FileListWin("我的文档", false, {100.f, 100.f}, 600.f, 400.f, g_Desktop->systemFont));
+}
+
+void IEIcon::onClick() {
+    if (g_Desktop) g_Desktop->addWindow(new BrowserWin({50.f, 50.f}, 800.f, 600.f, g_Desktop->systemFont));
+}
+
+void MyComputerIcon::onClick() {
+    if (g_Desktop) g_Desktop->addWindow(new MsgBoxWin("My Computer", "C: Local Disk (NTFS)\nThis drive is clean.", {300.f, 300.f}, 300.f, 150.f, g_Desktop->systemFont));
+}
+
+void MyComputerIcon::setupRightMenu() {
+    rightMenu.items.clear();
+    rightMenu.items.push_back({"Open", [this]() { this->onClick(); }, true});
+    rightMenu.items.push_back({"属性 (Properties)", [this]() {
+        if (g_Desktop) g_Desktop->addWindow(new SystemPropWin({200.f, 200.f}, 450.f, 450.f, g_Desktop->systemFont));
+    }, true});
+}
+
+void RecycleBinIcon::onClick() {
+    if (g_Desktop) g_Desktop->addWindow(new FileListWin("回收站", true, {120.f, 120.f}, 600.f, 400.f, g_Desktop->systemFont));
+}
+
+void RewardExeIcon::onClick() {
+    if (g_Desktop) g_Desktop->addWindow(new MsgBoxWin("Grok Terminal", ">>> GROK ACCESS GRANTED <<<\n无限制Grok永久使用权已激活！\n基础剧情通关完成。", {400.f, 300.f}, 400.f, 200.f, g_Desktop->systemFont));
+}
+
+// ── 8. Derived Windows ─────────────────────────────────────────
+
+// TextReadWin
+TextReadWin::TextReadWin(const std::string& fileTitle, const std::string& content, sf::Vector2f p, float w, float h, const sf::Font& font)
+    : GameWindow(fileTitle, p, w, h, font), textContent(content) {
+    docText.setFont(font);
+    docText.setString(content);
+    docText.setCharacterSize(16);
+    docText.setFillColor(C::TextWhite);
+}
+
+void TextReadWin::renderContent(sf::RenderWindow& win) {
+    sf::RectangleShape contentBg({width - 12.f, height - 40.f});
+    contentBg.setPosition(position.x + 6.f, position.y + 34.f);
+    contentBg.setFillColor(sf::Color::White);
+    win.draw(contentBg);
+    drawDoubleBevel(win, {position.x + 6.f, position.y + 34.f, width - 12.f, height - 40.f}, false);
+
+    docText.setPosition(position.x + 12.f, position.y + 40.f);
+    win.draw(docText);
+}
+
+void TextReadWin::handleInput(sf::Event& event) {}
+
+// BrowserWin
+BrowserWin::BrowserWin(sf::Vector2f p, float w, float h, const sf::Font& font)
+    : GameWindow("Internet Explorer", p, w, h, font), winFont(font) {
+    
+    addrBar.setFillColor(sf::Color::White);
+    addrBar.setOutlineThickness(1.f);
+    addrBar.setOutlineColor(sf::Color::Black);
+
+    addrText.setFont(font);
+    addrText.setCharacterSize(16);
+    addrText.setFillColor(sf::Color::Black);
+    
+    contentText.setFont(font);
+    contentText.setCharacterSize(16);
+    contentText.setFillColor(sf::Color::Black);
+}
+
+void BrowserWin::renderContent(sf::RenderWindow& win) {
+    addrBar.setSize({width - 80.f, 24.f});
+    addrBar.setPosition(position.x + 40.f, position.y + 34.f);
+    win.draw(addrBar);
+
+    addrText.setString(addressInput.empty() ? "http://www.spacex.com" : addressInput);
+    addrText.setPosition(position.x + 45.f, position.y + 36.f);
+    win.draw(addrText);
+
+    sf::RectangleShape contentBg({width - 12.f, height - 70.f});
+    contentBg.setPosition(position.x + 6.f, position.y + 64.f);
+    contentBg.setFillColor(sf::Color::White);
+    win.draw(contentBg);
+    drawDoubleBevel(win, {position.x + 6.f, position.y + 64.f, width - 12.f, height - 70.f}, false);
+
+    if (showSecretPage) {
+        contentText.setString(">>> TESLA PRIZE UNLOCKED <<<\n\n完美通关！特斯拉兑换终极奖励已解锁！");
+        contentText.setFillColor(sf::Color(200, 0, 0));
+    } else {
+        std::string page = "SpaceX 官方新闻存档\n\n"
+                           "=========================================\n"
+                           "【历史性突破】\n"
+                           "星舰 Starship 完成首次轨道飞行\n"
+                           "日期：2023年04月20日\n\n"
+                           "马斯克现场发言：\n"
+                           "'今天，人类迈出了走向火星的真正第一步。'\n"
+                           "=========================================\n\n\n\n\n\n\n\n\n"
+                           "(小字伏笔)：密钥后半段与特斯拉车型(Model S)出厂编号相关。";
+        contentText.setString(page);
+        contentText.setFillColor(sf::Color::Black);
+    }
+    contentText.setPosition(position.x + 12.f, position.y + 70.f);
+    win.draw(contentText);
+}
+
+void BrowserWin::handleInput(sf::Event& event) {
+    if (event.type == sf::Event::TextEntered) {
+        if (event.text.unicode == '\b') {
+            if (!addressInput.empty()) addressInput.pop_back();
+        } else if (event.text.unicode == '\r') {
+            if (addressInput == "tesla-prize.local") {
+                if (g_Desktop) g_Desktop->addWindow(new PasswordInputWin({position.x + 100.f, position.y + 100.f}, 300.f, 200.f, winFont));
+            }
+        } else if (event.text.unicode < 128) {
+            addressInput += static_cast<char>(event.text.unicode);
+        }
+    }
+}
+
+// FileListWin
+FileListWin::FileListWin(const std::string& title, bool recycleBin, sf::Vector2f p, float w, float h, const sf::Font& font)
+    : GameWindow(title, p, w, h, font), isRecycleBinMode(recycleBin), winFont(font) {
+    refreshFiles();
+}
+
+void FileListWin::refreshFiles() {
+    files.clear();
+    auto& gm = GameManager::getInstance();
+    
+    if (title == "回收站") {
+        isRecycleBinMode = true;
+        if (!gm.recycleBinUnlocked) return;
+        files.push_back({"特斯拉编号记录.txt", "txt", "后半段密钥为：2012"});
+    } 
+    else if (title == "加密档案室") {
+        isRecycleBinMode = false;
+        files.push_back({"密钥上半段.txt", "txt", "完整密钥 = 试飞日期 + 特斯拉Model S出厂编号\n\n后半段密钥已被永久删除至回收站。"});
+    }
+    else { // 我的文档
+        isRecycleBinMode = false;
+        files.push_back({"项目备忘录.txt", "txt", "日期：2003年10月22日\n\n主线线索：第一层密码为星舰首次轨道试飞日期。\n完整密钥分为两段，后半段已被我删除。"});
+        files.push_back({"加密提示.doc", "doc", "加密文件夹入口藏于系统属性面板，\n不要只看桌面图标。"});
+    }
+}
+
+void FileListWin::renderContent(sf::RenderWindow& win) {
+    sf::RectangleShape contentBg({width - 12.f, height - 40.f});
+    contentBg.setPosition(position.x + 6.f, position.y + 34.f);
+    contentBg.setFillColor(sf::Color::White);
+    win.draw(contentBg);
+    drawDoubleBevel(win, {position.x + 6.f, position.y + 34.f, width - 12.f, height - 40.f}, false);
+
+    float yOffset = position.y + 40.f;
+    int idx = 0;
+    for (auto& f : files) {
+        sf::Text fText;
+        fText.setFont(winFont);
+        fText.setString((isRecycleBinMode ? "[已删除] " : "") + f.name);
+        fText.setCharacterSize(16);
+        fText.setPosition(position.x + 20.f, yOffset);
+
+        if (idx == selectedIdx) {
+            sf::RectangleShape selBg({width - 24.f, 20.f});
+            selBg.setPosition(position.x + 12.f, yOffset);
+            selBg.setFillColor(C::SelectBorder);
+            win.draw(selBg);
+            fText.setFillColor(sf::Color::White);
+        } else {
+            fText.setFillColor(sf::Color::Black);
+        }
+        win.draw(fText);
+        yOffset += 24.f;
+        idx++;
+    }
+}
+
+void FileListWin::handleInput(sf::Event& event) {
+    if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+        sf::Vector2i mp(event.mouseButton.x, event.mouseButton.y);
+        int idx = (mp.y - (position.y + 40.f)) / 24.f;
+        if (idx >= 0 && idx < files.size() && mp.x > position.x && mp.x < position.x + width) {
+            
+            // Double click logic for files
+            if (selectedIdx == idx && g_Desktop && g_Desktop->clickClock.getElapsedTime().asMilliseconds() < DOUBLE_CLICK_MS) {
+                g_Desktop->addWindow(new TextReadWin(files[idx].name, files[idx].content, {position.x + 50.f, position.y + 50.f}, 450.f, 350.f, winFont));
+                g_Desktop->clickClock.restart();
+            } else {
+                selectedIdx = idx;
+                if (g_Desktop) g_Desktop->clickClock.restart();
+            }
+        } else {
+            selectedIdx = -1;
+        }
+    } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Right) {
+        if (selectedIdx != -1 && isRecycleBinMode) {
+            // Restore file to desktop
+            std::string restoredName = files[selectedIdx].name;
+            std::string restoredContent = files[selectedIdx].content;
+            files.erase(files.begin() + selectedIdx);
+            selectedIdx = -1;
+            
+            GameManager::getInstance().isRewardUnlocked = true;
+            
+            if (g_Desktop) {
+                // Add the restored file to the desktop
+                NotepadIcon* restoredIcon = new NotepadIcon({40.f, 640.f}, "assets/notepad.jpg", winFont);
+                restoredIcon->label = restoredName;
+                restoredIcon->setupRightMenu();
+                // We override the default onClick to show the specific restored content
+                restoredIcon->rightMenu.items[0].action = [restoredName, restoredContent, this]() {
+                    g_Desktop->addWindow(new TextReadWin(restoredName, restoredContent, {150.f, 150.f}, 450.f, 300.f, winFont));
+                };
+                g_Desktop->icons.push_back(restoredIcon);
+                
+                g_Desktop->addWindow(new MsgBoxWin("还原成功", "《" + restoredName + "》已成功还原至桌面！\n(星舰奖励.exe 也已自动解锁)", {position.x+50, position.y+50}, 380.f, 180.f, winFont));
+            }
+        }
+    }
+}
+
+// SystemPropWin
+SystemPropWin::SystemPropWin(sf::Vector2f p, float w, float h, const sf::Font& font)
+    : GameWindow("系统属性", p, w, h, font), winFont(font) {
+    
+    secretBtn.setSize({120.f, 30.f});
+    secretBtn.setFillColor(C::WindowBody);
+    
+    secretBtnText.setFont(font);
+    secretBtnText.setString("[加密档案室]");
+    secretBtnText.setCharacterSize(14);
+    secretBtnText.setFillColor(sf::Color::Black);
+}
+
+void SystemPropWin::renderContent(sf::RenderWindow& win) {
+    sf::Text t("System:\n  Microsoft Windows XP Professional\n  Version 2002\n  Service Pack 3\n\nRegistered to:\n  E.M.\n  SpaceX HQ", winFont, 14);
+    t.setFillColor(sf::Color::Black);
+    t.setPosition(position.x + 20.f, position.y + 50.f);
+    win.draw(t);
+
+    secretBtn.setPosition(position.x + width - 140.f, position.y + height - 50.f);
+    win.draw(secretBtn);
+    drawDoubleBevel(win, {secretBtn.getPosition().x, secretBtn.getPosition().y, 120.f, 30.f}, true);
+
+    secretBtnText.setPosition(secretBtn.getPosition().x + 15.f, secretBtn.getPosition().y + 6.f);
+    win.draw(secretBtnText);
+}
+
+void SystemPropWin::handleInput(sf::Event& event) {
+    if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+        sf::FloatRect btnBounds(secretBtn.getPosition().x, secretBtn.getPosition().y, 120.f, 30.f);
+        if (btnBounds.contains((float)event.mouseButton.x, (float)event.mouseButton.y)) {
+            if (g_Desktop) g_Desktop->addWindow(new PasswordInputWin({position.x + 50.f, position.y + 50.f}, 350.f, 200.f, winFont));
+        }
+    }
+}
+
+// PasswordInputWin
+PasswordInputWin::PasswordInputWin(sf::Vector2f p, float w, float h, const sf::Font& font)
+    : GameWindow("输入密码", p, w, h, font), winFont(font) {
+    inputField.setFillColor(sf::Color::White);
+    inputField.setOutlineThickness(1.f);
+    inputField.setOutlineColor(sf::Color::Black);
+    
+    promptText.setFont(font);
+    promptText.setCharacterSize(14);
+    promptText.setFillColor(sf::Color::Black);
+    
+    inputText.setFont(font);
+    inputText.setCharacterSize(16);
+    inputText.setFillColor(sf::Color::Black);
+}
+
+void PasswordInputWin::renderContent(sf::RenderWindow& win) {
+    promptText.setString(hasError ? "密码错误！" : "请输入密码解锁机密:");
+    promptText.setFillColor(hasError ? sf::Color::Red : sf::Color::Black);
+    promptText.setPosition(position.x + 20.f, position.y + 50.f);
+    win.draw(promptText);
+
+    inputField.setSize({width - 40.f, 30.f});
+    inputField.setPosition(position.x + 20.f, position.y + 90.f);
+    win.draw(inputField);
+
+    inputText.setString(typedPassword + "_");
+    inputText.setPosition(position.x + 25.f, position.y + 95.f);
+    win.draw(inputText);
+}
+
+void PasswordInputWin::handleInput(sf::Event& event) {
+    if (event.type == sf::Event::TextEntered) {
+        if (event.text.unicode == '\b') {
+            if (!typedPassword.empty()) typedPassword.pop_back();
+        } else if (event.text.unicode == '\r') {
+            auto& gm = GameManager::getInstance();
+            if (typedPassword == gm.fullKey) {
+                closeWindow();
+                if (g_Desktop) {
+                    for (auto* w : g_Desktop->openWindows) {
+                        if (auto bw = dynamic_cast<BrowserWin*>(w)) bw->showSecretPage = true;
+                    }
+                    g_Desktop->addWindow(new EasterEggWin({position.x - 100, position.y - 100}, 500.f, 400.f, winFont));
+                }
+            }
+            else if (typedPassword == gm.keyPart1) {
+                closeWindow();
+                gm.recycleBinUnlocked = true;
+                if (g_Desktop) g_Desktop->addWindow(new FileListWin("加密档案室", false, {position.x, position.y}, 600.f, 400.f, winFont));
+            } else {
+                hasError = true;
+                typedPassword.clear();
+            }
+        } else if (event.text.unicode < 128) {
+            typedPassword += static_cast<char>(event.text.unicode);
+            hasError = false;
+        }
+    }
+}
+
+// MsgBoxWin
+MsgBoxWin::MsgBoxWin(const std::string& boxTitle, const std::string& message, sf::Vector2f p, float w, float h, const sf::Font& font)
+    : GameWindow(boxTitle, p, w, h, font) {
+    msgText.setFont(font);
+    msgText.setString(message);
+    msgText.setCharacterSize(14);
+    msgText.setFillColor(sf::Color::Black);
+
+    okBtn.setSize({80.f, 30.f});
+    okBtn.setFillColor(C::WindowBody);
+    
+    okBtnText.setFont(font);
+    okBtnText.setString("确定");
+    okBtnText.setCharacterSize(14);
+    okBtnText.setFillColor(sf::Color::Black);
+}
+
+void MsgBoxWin::renderContent(sf::RenderWindow& win) {
+    msgText.setPosition(position.x + 20.f, position.y + 40.f);
+    win.draw(msgText);
+
+    okBtn.setPosition(position.x + width / 2.f - 40.f, position.y + height - 40.f);
+    win.draw(okBtn);
+    drawDoubleBevel(win, {okBtn.getPosition().x, okBtn.getPosition().y, 80.f, 30.f}, true);
+
+    okBtnText.setPosition(okBtn.getPosition().x + 24.f, okBtn.getPosition().y + 6.f);
+    win.draw(okBtnText);
+}
+
+void MsgBoxWin::handleInput(sf::Event& event) {
+    if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+        sf::FloatRect btnBounds(okBtn.getPosition().x, okBtn.getPosition().y, 80.f, 30.f);
+        if (btnBounds.contains((float)event.mouseButton.x, (float)event.mouseButton.y)) {
+            closeWindow();
+        }
+    }
+}
+
+// EasterEggWin
+EasterEggWin::EasterEggWin(sf::Vector2f p, float w, float h, const sf::Font& font)
+    : GameWindow("TESLA PRIZE", p, w, h, font) {
+    congratsText.setFont(font);
+    congratsText.setString("完美通关！\n特斯拉汽车兑换资格确认中...");
+    congratsText.setCharacterSize(20);
+    congratsText.setFillColor(sf::Color::Red);
+    
+    teslaFrame.setSize({w - 40.f, 200.f});
+    teslaFrame.setFillColor(sf::Color(100, 100, 100)); 
+}
+
+void EasterEggWin::renderContent(sf::RenderWindow& win) {
+    congratsText.setPosition(position.x + 20.f, position.y + 40.f);
+    win.draw(congratsText);
+    
+    int r = (int)(127 + 128 * sin(animationClock.getElapsedTime().asSeconds() * 5.f));
+    teslaFrame.setFillColor(sf::Color(r, 50, 50));
+    teslaFrame.setPosition(position.x + 20.f, position.y + 120.f);
+    win.draw(teslaFrame);
+}
+
+void EasterEggWin::handleInput(sf::Event& event) {}
+
+// ── 9. Desktop Class ───────────────────────────────────────────
+Desktop::Desktop() {
+    g_Desktop = this;
+}
+
+Desktop::~Desktop() {
+    for (auto* ic : icons) delete ic;
+    for (auto* w : openWindows) delete w;
+}
+
+void Desktop::init(sf::RenderWindow& win) {
+    renderWin = &win;
+    if (!systemFont.loadFromFile("assets/simhei.ttf")) {
+        systemFont.loadFromFile("C:/Windows/Fonts/simhei.ttf");
+    }
+
+    startTex.loadFromFile("assets/start.jpg");
+    startTex.setSmooth(true);
+    startSpr.setTexture(startTex);
+    
+    taskbarBg.setFillColor(C::TaskbarBg);
+    clockText.setFont(systemFont);
+    clockText.setCharacterSize(14);
+    clockText.setFillColor(sf::Color::White);
+
+    icons.push_back(new MyComputerIcon({40.f, 40.f}, "assets/folder.jpg", systemFont));
+    icons.push_back(new MyDocIcon({40.f, 160.f}, "assets/folder.jpg", systemFont));
+    icons.push_back(new IEIcon({40.f, 280.f}, "assets/notepad.jpg", systemFont));
+    icons.push_back(new NotepadIcon({40.f, 400.f}, "assets/notepad.jpg", systemFont));
+    icons.push_back(new RecycleBinIcon({40.f, 520.f}, "assets/recycle.jpg", systemFont));
+
+    for (auto* ic : icons) {
+        ic->setupRightMenu();
+    }
+}
+
+void Desktop::addWindow(GameWindow* win) {
+    openWindows.push_back(win);
+}
+
+void Desktop::updateTaskbar() {
+    taskbarBg.setSize({WIN_W, TASKBAR_H});
+    taskbarBg.setPosition(0, WIN_H - TASKBAR_H);
+    startSpr.setPosition(5.f, WIN_H - TASKBAR_H + 5.f);
+    clockText.setString(getTimeString());
+    clockText.setPosition(WIN_W - 80.f, WIN_H - 40.f);
+}
+
+void Desktop::processEvents() {
+    sf::Event event;
+    while (renderWin->pollEvent(event)) {
+        if (event.type == sf::Event::Closed) renderWin->close();
+        sf::Vector2f mPos = sf::Vector2f(sf::Mouse::getPosition(*renderWin));
+        
+        if (event.type == sf::Event::MouseMoved) {
+            for (auto* w : openWindows) w->dragUpdate(mPos);
+            // Hide context menus if hover changes can be placed here, but simpler logic suffices.
+        }
+
+        if (event.type == sf::Event::MouseButtonPressed) {
+            bool handled = false;
+            
+            // Context Menu interactions
+            for (auto* ic : icons) {
+                if (ic->rightMenu.visible) {
+                    if (event.mouseButton.button == sf::Mouse::Left && ic->rightMenu.isMouseHit(mPos)) {
+                        int idx = ic->rightMenu.itemAt(sf::Mouse::getPosition(*renderWin));
+                        if (idx != -1) ic->rightMenu.items[idx].action();
+                        handled = true;
+                    }
+                    ic->rightMenu.hide(); // Hide all menus on click
+                }
+            }
+            if (handled) continue;
+
+            // Windows
+            for (int i = (int)openWindows.size() - 1; i >= 0; --i) {
+                GameWindow* w = openWindows[i];
+                if (!w->isOpen || w->isMinimized) continue;
+                if (w->isMouseHit(mPos)) {
+                    if (i != openWindows.size() - 1) { // Bring to front
+                        openWindows.erase(openWindows.begin() + i);
+                        openWindows.push_back(w);
+                    }
+                    if (event.mouseButton.button == sf::Mouse::Left) {
+                        if (w->containsCloseBtn(mPos)) w->closeWindow();
+                        else if (w->containsTitleBar(mPos)) {
+                            w->isDraging = true;
+                            w->dragOffset = mPos - w->position;
+                        } else w->handleInput(event);
+                    } else w->handleInput(event);
+                    handled = true;
+                    break;
+                }
+            }
+            if (handled) continue;
+
+            // Icons
+            for (auto* ic : icons) {
+                if (ic->isMouseHit(mPos)) {
+                    for (auto* other : icons) other->selected = false;
+                    ic->selected = true;
+
+                    if (event.mouseButton.button == sf::Mouse::Left) {
+                        if (lastClickedIcon == ic && clickClock.getElapsedTime().asMilliseconds() < DOUBLE_CLICK_MS) {
+                            ic->onClick();
+                            lastClickedIcon = nullptr;
+                        } else {
+                            lastClickedIcon = ic;
+                            clickClock.restart();
+                        }
+                    } else if (event.mouseButton.button == sf::Mouse::Right) {
+                        ic->rightMenu.show(mPos, ic->rightMenu.items);
+                    }
+                    handled = true;
+                    break;
+                }
+            }
+            if (!handled && event.mouseButton.button == sf::Mouse::Left) {
+                for (auto* ic : icons) ic->selected = false;
+            }
+        }
+
+        if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
+            for (auto* w : openWindows) w->isDraging = false;
+        }
+
+        if (event.type == sf::Event::TextEntered || event.type == sf::Event::KeyPressed) {
+            if (!openWindows.empty()) {
+                GameWindow* top = openWindows.back();
+                if (top->isOpen && !top->isMinimized) top->handleInput(event);
+            }
+        }
+    }
+
+    // Dynamic Reward Unlock
+    static bool rewardAdded = false;
+    if (GameManager::getInstance().isRewardUnlocked && !rewardAdded) {
+        RewardExeIcon* reward = new RewardExeIcon({40.f, 640.f}, "assets/notepad.jpg", systemFont);
+        reward->setupRightMenu();
+        icons.push_back(reward);
+        rewardAdded = true;
+    }
+
+    // Garbage collection
+    openWindows.erase(std::remove_if(openWindows.begin(), openWindows.end(), [](GameWindow* w) {
+        if (!w->isOpen) { delete w; return true; }
+        return false;
+    }), openWindows.end());
+}
+
+void Desktop::renderAll() {
+    renderWin->clear(C::DesktopBg);
+    
+    for (auto* ic : icons) ic->render(*renderWin);
+    for (auto* w : openWindows) w->render(*renderWin);
+    
+    // Taskbar
+    renderWin->draw(taskbarBg);
+    renderWin->draw(startSpr);
+    renderWin->draw(clockText);
+    
+    renderWin->display();
+}
+
+void Desktop::run() {
+    while (renderWin->isOpen()) {
+        processEvents();
+        updateTaskbar();
+        renderAll();
+    }
+}

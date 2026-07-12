@@ -16,6 +16,13 @@ add_executable(main src/main.cpp src/DesktopGame.cpp)
 target_compile_features(main PRIVATE cxx_std_17)
 target_link_libraries(main PRIVATE SFML::Graphics)
 
+# Ensure UTF-8 source encoding for Chinese UI strings (MSVC / MinGW)
+if(MSVC)
+    target_compile_options(main PRIVATE /utf-8)
+else()
+    target_compile_options(main PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
+endif()
+
 # Copy assets folder to output directory after build
 add_custom_command(TARGET main POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

@@ -1,27 +1,20 @@
-#pragma once
+import os
+
+hpp_content = """#pragma once
 #include <SFML/Graphics.hpp>
 #include <string>
 #include <vector>
 #include <functional>
 #include <algorithm>
-#include <optional>
-#include <set>
-#include <fstream>
 
 // ── Shell metrics (simulating Win32 / XP metrics) ───────────────
 constexpr float WIN_W            = 1280.f;
 constexpr float WIN_H            = 800.f;
 constexpr float TASKBAR_H        = 40.f;
 constexpr float DESKTOP_H        = WIN_H - TASKBAR_H;
-constexpr float ICON_W           = 96.f;
-constexpr float ICON_H           = 96.f;
+constexpr float ICON_W           = 48.f;
+constexpr float ICON_H           = 48.f;
 constexpr float ICON_CELL_H      = 96.f;
-constexpr float GRID_COL_W       = 100.f;   // grid cell width
-constexpr float GRID_ROW_H       = 110.f;   // grid cell height
-constexpr float GRID_MARGIN_X    = 10.f;    // left margin
-constexpr float GRID_MARGIN_Y    = 10.f;    // top margin
-constexpr int   GRID_COLS        = 2;       // default icon columns (left side)
-constexpr std::string_view ICON_POS_FILE = "icon_positions.ini";
 constexpr float TITLEBAR_H       = 22.f;
 constexpr float BORDER           = 3.f;
 constexpr float CAPTION_BTN      = 16.f;
@@ -366,8 +359,6 @@ public:
     sf::Text    labelText;
     bool        selected  = false;
     bool        highlight = false;
-int         gridSlot  = -1;   // which grid slot this icon occupies (-1 = unassigned)
-std::string iconId;           // stable identifier for position saving
 
     AppIconBase(sf::Vector2f p, const std::string& lbl,
                 const std::string& texPath, const sf::Font& font);
@@ -430,11 +421,6 @@ public:
     sf::Clock         clickClock;
     AppIconBase*      lastClickedIcon = nullptr;
 
-    // Icon drag state
-    AppIconBase*      draggingIcon    = nullptr;
-    sf::Vector2f      iconDragOffset;
-    bool              iconDragMoved   = false;
-
     ContextMenu shellMenu;
 
     sf::RectangleShape taskbarBg;
@@ -443,19 +429,11 @@ public:
     sf::Texture        wallTex;
     sf::Sprite         wallSpr;
     bool               hasWallpaper = false;
-    std::optional<sf::Text> clockText;
-    std::optional<sf::Text> startLabel;
+    sf::Text           clockText;
+    sf::Text           startLabel;
     sf::Clock          animClock;
 
     TeslaExeIcon*  rewardIcon  = nullptr;
-
-// Grid slot management
-std::set<int>  usedSlots;
-int  allocateSlot();
-sf::Vector2f slotPosition(int slot) const;
-int  nearestFreeSlot(sf::Vector2f pos) const;
-void saveIconPositions() const;
-void loadIconPositions();
     RecycleBinIcon* recycleIcon = nullptr;
     SecretFolderIcon* secretIcon = nullptr;
 
@@ -485,3 +463,9 @@ private:
 };
 
 extern Desktop* g_Desktop;
+"""
+
+with open(r"d:\Xgame\Xgame\src\DesktopGame.hpp", "w", encoding="utf-8") as f:
+    f.write(hpp_content)
+
+print("DesktopGame.hpp overwritten.")
