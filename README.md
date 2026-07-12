@@ -1,117 +1,143 @@
-# CMake SFML Project Template
+# 《尘封的星舰工作站》SFML 游戏 - 设计汇报文档（更新重构版）
 
-This repository template should allow for a fast and hassle-free kick start of your next SFML project using CMake.
-Thanks to [GitHub's nature of templates](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template), you can fork this repository without inheriting its Git history.
+> **汇报人**：XXX ｜ **类型**：小组项目 ｜ **技术栈**：基于 SFML 库 C++ 面向对象开发
 
-The template starts out very basic, but might receive additional features over time:
+**核心对标老师考核要求：**
+1. 类结构与继承关系分析
+2. 游戏原型抽象、类分层、管理与优化
+3. 剧情与玩法优化说明
 
-- Basic CMake script to build your project and link SFML on any operating system
-- Basic [GitHub Actions](https://github.com/features/actions) script for all major platforms
+---
 
-## Quick start
+## 一、项目概述与剧情优化设计
 
-### Command line
+### 1.1 游戏基础信息
+* **游戏名称**：《尘封的星舰工作站》
+* **运行平台**：基于 C++ 与 SFML 库开发，模拟 Windows XP 复古桌面交互解谜游戏。
+* **核心玩法**：玩家通过模拟 XP 系统原生操作（右键菜单、系统属性、IE 浏览器、回收站文件管理），分层收集线索、拼接密钥，解锁双结局通关内容。
 
-1. Install [Git](https://git-scm.com/downloads) and [CMake](https://cmake.org/download/). Use your system's package manager if available.
-2. Follow [GitHub's instructions](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template) for how to use their project template feature to create your own project. If you don't want to use GitHub, see the section below.
-3. Clone your new GitHub repo and open the repo in your text editor of choice.
-4. Open [CMakeLists.txt](CMakeLists.txt). Rename the project and the target name of the executable to whatever name you want. Make sure to change all occurrences.
-5. If you want to add or remove any .cpp files, change the source files listed in the `add_executable` call in CMakeLists.txt to match the source files your project requires. If you plan on keeping the default main.cpp file then no changes are required.
-6. If your code uses the Audio or Network modules then add `SFML::Audio` or `SFML::Network` to the `target_link_libraries` call alongside the existing `SFML::Graphics` library that is being linked.
-7. If you use Linux, install SFML's dependencies using your system package manager. On Ubuntu and other Debian-based distributions you can use the following commands:
-   ```
-   sudo apt update
-   sudo apt install \
-       libxrandr-dev \
-       libxcursor-dev \
-       libxi-dev \
-       libudev-dev \
-       libfreetype-dev \
-       libflac-dev \
-       libvorbis-dev \
-       libgl1-mesa-dev \
-       libegl1-mesa-dev \
-       libfreetype-dev \
-       libharfbuzz-dev \
-       libmbedtls-dev \
-       libssh2-1-dev
-   ```
-8. Configure and build your project. Most popular IDEs support CMake projects with very little effort on your part.
+### 1.2 完整版背景铺垫
+2008 年 SpaceX 内部淘汰一批 Windows XP 办公主机，本机为**埃隆·马斯克专属工作站**，存储了**星舰初代试飞机密文档**、**Grok 大模型早期训练核心日志**。为防止核心资料外泄，马斯克将解谜密钥分段拆分，隐藏于系统全维度角落：桌面图标右键注释、系统文档、IE 浏览器页面、回收站删除文件、系统属性面板等。
 
-   - [VS Code](https://code.visualstudio.com) via the [CMake extension](https://code.visualstudio.com/docs/cpp/cmake-linux)
-   - [Visual Studio](https://docs.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio?view=msvc-170)
-   - [CLion](https://www.jetbrains.com/clion/features/cmake-support.html)
-   - [Qt Creator](https://doc.qt.io/qtcreator/creator-project-cmake.html)
+**行业传言**：完整解开全部谜题的玩家，可获得两份专属终极奖励 —— 无限制 Grok 永久使用权、一台特斯拉汽车兑换资格。玩家在二手数码市场购入这台报废工作站，开机后系统提示所有核心文件已加密，必须逐层收集线索、拼接密钥，解锁尘封的星舰机密。
 
-   Using CMake from the command line is straightforward as well.
-   Be sure to run these commands in the root directory of the project you just created.
+### 1.3 四层递进式解谜流程
+* **阶段 1：初始桌面交互 —— 全域伏笔铺设**
+  * 初始桌面固定图标：我的文档、IE 浏览器、我的电脑、回收站
+  * **伏笔 1（图标右键）**：右键单击【我的文档】，菜单小字提示：星舰首飞藏在网页，密码不止一组数字。
+  * **伏笔 2（文档线索）**：打开【我的文档】，内部存放两类文件：
+    * 《项目备忘录.txt》（`TextFile`）：主线线索，第一层密码为星舰首飞日期，完整密钥分为两段，后半段已被删除。
+    * 《加密提示.doc》（`TextFile`）：隐藏伏笔，加密文件夹入口藏于系统属性面板，不局限于桌面图标。
+  * **阶段收获**：明确密钥分段机制、加密文件入口位置、后半段密钥存放在回收站已删除文件中。
 
-   ```
-   cmake -B build
-   cmake --build build
-   ```
+* **阶段 2：IE 浏览器交互 —— 获取第一段密钥**
+  * 双击【IE 浏览器图标】打开 `BrowserWindow` 窗口，自动加载 SpaceX 历史官网页面。
+  * **头条**标注星舰首飞日期 20230420（第一段密钥）。
+  * 页面底部小字伏笔：密钥后半段与特斯拉车型出厂编号相关。
+  * **阶段收获**：获取前半段密钥，锁定第二段密钥关联特斯拉 Model S 出厂编号。
 
-9. Enjoy!
+* **阶段 3：系统隐藏入口 —— 密钥分段反转设计**
+  * 右键【我的电脑】打开系统属性窗口，点击隐藏按钮【加密档案室】，弹出 `PasswordDialog` 密码输入弹窗。
+  * 输入第一段密钥 **20230420** 解锁加密文件夹，文件夹内存放 `LockedFile`《密钥上半段》。
+  * 文档内容给出核心反转设定：完整密钥 = 试飞日期 + 特斯拉 Model S 出厂编号，后半段密钥已被移入回收站永久删除。
+  * 同时桌面 `SecretFolderIcon` 解锁高亮，引导玩家进入回收站。
 
-### Visual Studio
+* **阶段 4：回收站文件还原 —— 拼接完整密钥**
+  * 双击【回收站图标】打开回收站文件列表，找到 `DeletedFile`《特斯拉编号记录.txt》。
+  * 执行还原操作后读取后半段数字 **2012**，拼接完整密钥：**202304202012**。
+  * `StoryManager` 标记主线剧情完成，桌面自动解锁 `TeslaExeIcon` 彩蛋程序图标。
 
-Using a Visual Studio workspace is the simplest way to get started on windows.
+### 1.4 双结局设计
+* **普通结局（基础通关）**：双击 `TeslaExeIcon` 打开 `RewardAnimWindow`，弹窗动画解锁无限制 Grok 永久使用权，基础剧情通关。
+* **完美隐藏结局（深度解谜）**：返回 `BrowserWindow` 浏览器窗口，在地址栏手动输入隐藏页面 `tesla-prize.local`，弹出密码校验窗口，输入完整长密钥 **202304202012**，触发专属完整动画，解锁特斯拉免费兑换奖励，达成完美通关。
 
-1. Ensure you have the [required components installed](https://learn.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio#installation).
-2. Follow [GitHub's instructions](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template) for how to use their project template feature to create your own project.
-3. If you have already cloned this repo, you can [open the folder](https://learn.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio0#ide-integration).
-4. If not, you can [clone it directly in Visual Studio](https://learn.microsoft.com/en-us/visualstudio/get-started/tutorial-open-project-from-repo).
+### 1.5 剧情优化核心优势
+* **多层伏笔布局**：线索分布于右键菜单、系统文档、网页小字、隐藏面板，打破单一文字线索模式。
+* **递进反转结构**：密钥分段收集、文件分四种状态（正常 / 加密 / 已删除 / 可执行），解谜流程有铺垫、推进、反转，逻辑闭环完整。
+* **双结局差异化**：区分基础 / 完美通关，增加隐藏网址解谜内容，提升剧情层次感与可玩性。
+* **贴合原生交互**：所有解谜依托 Windows XP 真实操作逻辑，与文件、窗口、图标三层继承体系深度绑定。
+* **业务解耦**：全部剧情进度、解锁状态统一由 `StoryManager` 管理，UI 层仅负责展示交互。
 
-Visual Studio should automatically configure the CMake project, then you can build and run as normal through Visual Studio. See the links above for more details.
+---
 
-## Upgrading SFML
+## 二、面向对象类体系设计
 
-SFML is found via CMake's [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html) module.
-FetchContent automatically downloads SFML from GitHub and builds it alongside your own code.
-Beyond the convenience of not having to install SFML yourself, this ensures ABI compatibility and simplifies things like specifying static versus shared libraries.
+### 2.1 设计总思路
+针对原型版本所有类相互独立、无继承多态、代码复用率低的问题，基于开闭原则、单一职责原则，设计三条独立继承链 + 全局业务管理类架构：
+1. **文件对象继承链**：统一管理游戏内全部文档、加密文件、回收站文件、可执行程序，依靠多态统一打开逻辑。
+2. **解谜窗口继承链**：复用窗口拖拽、关闭、标题栏等通用外壳逻辑，子类仅实现专属内容渲染。
+3. **桌面图标继承链**：满足 “一个图标一个类” 要求，基类统一封装渲染、碰撞检测，每个图标重写双击专属行为。
+4. **单例剧情管理类 `StoryManager`**：解耦 UI 与剧情数据，统一管控关卡、线索、解锁状态、密码校验。
 
-Modifying what version of SFML you want is as easy as changing the `GIT_TAG` argument.
-Currently it uses SFML 3 via the `3.1.0` tag.
+整体架构大量复用父类通用代码，依靠纯虚函数实现多态，完全契合 SFML 游戏开发与 C++ 面向对象考核要求。
 
-## But I want to...
+### 2.2 三大核心继承链详细设计
 
-Modify CMake options by adding them as configuration parameters (with a `-D` flag) or by modifying the contents of CMakeCache.txt and rebuilding.
+#### （一）文件对象继承链 —— 多态核心载体
+* **顶层基类**：`FileObject`（抽象基类）
+  * 封装共性成员：文件名、图标资源、文件可读状态。
+  * 定义纯虚接口 `virtual void open() = 0;`。
+* **四大派生类**：
+  * `TextFile`（普通文本文档）：打开 `NotepadWindow` 记事本窗口，加载展示文本线索。
+  * `LockedFile`（加密锁定文件）：未解锁时弹出 `PasswordDialog` 密码弹窗，校验通过后展示隐藏密钥内容。
+  * `DeletedFile`（回收站已删除文件）：未还原时提示文件已删除，执行还原操作后转为可读状态，正常展示内容。
+  * `ExeProgramFile`（可执行程序文件）：打开 `RewardAnimWindow` 结局动画窗口，播放通关奖励动画。
 
-### Not use GitHub
+#### （二）解谜窗口继承链 —— 代码复用核心载体
+* **顶层基类**：`PuzzleWindowBase`（抽象基类）
+  * 封装通用属性与方法：坐标、尺寸、窗口标题、拖拽偏移、外壳渲染、标题栏拖拽更新、关闭按钮逻辑等。
+  * 定义纯虚接口 `virtual void renderContent(sf::RenderWindow& win) = 0;`。
+* **四大派生交互窗口**：
+  * `NotepadWindow`（记事本窗口）：读取各类 `TextFile` 文本线索。
+  * `BrowserWindow`（IE 浏览器窗口）：内置地址栏、网址校验、页面文本渲染。
+  * `PasswordDialog`（密码校验弹窗）：接收键盘输入、分段密钥匹配校验。
+  * `RewardAnimWindow`（结局彩蛋窗口）：逐帧动画渲染、奖励文字动态播放。
 
-You can use this project without a GitHub account by [downloading the contents](https://github.com/SFML/cmake-sfml-project/archive/refs/heads/master.zip) of the repository as a ZIP archive and unpacking it locally.
-This approach also avoids using Git entirely if you would prefer to not do that.
+#### （三）桌面图标继承链
+* **顶层基类**：`AppIconBase`（抽象基类）
+  * 封装图标通用属性：屏幕坐标、图标纹理、下方文字、选中标记、绘制、碰撞检测。
+  * 定义纯虚接口 `virtual void onDoubleClick() = 0;`。
+* **五大派生桌面图标类**：
+  * `MyDocumentsIcon`：打开文件列表窗口。
+  * `IEBrowserIcon`：创建浏览器窗口加载 SpaceX 官网线索页面。
+  * `RecycleBinIcon`：展示所有已删除文件。
+  * `SecretFolderIcon`：未解锁无响应，输入第一段密钥解锁后，展示加密密钥文档。
+  * `TeslaExeIcon`：主线通关后解锁可见，双击打开结局窗口。
 
-### Change Compilers
+### 2.3 独立全局业务管理类
+**`StoryManager` 剧情管理器（单例模式）**
+* **设计目的**：将全部剧情业务逻辑与 UI 界面完全解耦。
+* **核心功能**：记录当前剧情阶段、存储分段密钥、记录解锁状态、判定完美结局触发条件、对外提供查询接口。
+* **设计价值**：修改谜题答案、新增关卡、调整解锁规则仅修改本类，无需改动 UI 渲染代码。
 
-See the variety of [`CMAKE_<LANG>_COMPILER`](https://cmake.org/cmake/help/latest/variable/CMAKE_LANG_COMPILER.html) options.
-In particular you'll want to modify `CMAKE_CXX_COMPILER` to point to the C++ compiler you wish to use.
+### 2.4 全局桌面总控类
+**`Desktop`**
+* 聚合全部图标（`vector<AppIconBase*>`）、所有打开窗口（`vector<PuzzleWindowBase*>`）。
+* 统一遍历所有 UI 基类指针，依靠多态批量调用 `render()` 绘制、统一检测鼠标点击。是游戏可视化顶层调度载体。
 
-### Change Compiler Optimizations
+### 2.5 类之间核心关系汇总（四大关系）
+* **泛化（继承）**：三条完整继承链，子类复用父类通用属性与实现方法，重写纯虚函数实现多态。
+* **聚合**：Desktop 聚合所有图标、窗口基类指针容器；文件列表窗口聚合 `FileObject` 子类对象。
+* **组合**：各类窗口、图标内部组合 SFML 图形组件（纹理、文字、矩形），生命周期绑定。
+* **依赖**：所有 UI 交互类依赖单例 `StoryManager` 读取剧情状态；窗口绘制依赖 `sf::RenderWindow`。
 
-CMake abstracts away specific optimizer flags through the [`CMAKE_BUILD_TYPE`](https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html) option.
-By default this project recommends `Release` builds which enable optimizations.
-Other build types include `Debug` builds which enable debug symbols but disable optimizations.
-If you're using a multi-configuration generator (as is often the case on Windows), you can modify the [`CMAKE_CONFIGURATION_TYPES`](https://cmake.org/cmake/help/latest/variable/CMAKE_CONFIGURATION_TYPES.html#variable:CMAKE_CONFIGURATION_TYPES) option.
+### 2.6 项目优化设计方法
+1. **抽象与多态优化**：三条继承链均设计顶层抽象基类，定义统一纯虚接口；Desktop 统一使用基类指针容器管理所有 UI，符合开闭原则。
+2. **代码复用优化**：通用逻辑封装在基类，消除大量重复代码。
+3. **单例模式解耦优化**：`StoryManager` 集中管理业务逻辑，降低模块耦合度。
+4. **规范拓展优化**：严格遵循 “一个图标一个类”，拓展新图标仅需新建派生类。
+5. **资源复用优化**：XP 系统 UI 纹理、字体全局统一加载，减少内存开销。
 
-### Change Generators
+---
 
-While CMake will attempt to pick a suitable default generator, some systems offer a number of generators to choose from.
-Ubuntu, for example, offers Makefiles and Ninja as two potential options.
-For a list of generators, click [here](https://cmake.org/cmake/help/latest/manual/cmake-generators.7.html).
-To modify the generator you're using you must reconfigure your project providing a `-G` flag with a value corresponding to the generator you want.
-You can't simply modify an entry in the CMakeCache.txt file unlike the above options.
-Then you may rebuild your project with this new generator.
+## 三、课堂直接使用汇报话术（精简版，脱稿可讲）
 
-## More Reading
+### 3.1 剧情部分汇报话术
+针对最初版本剧情线性、线索单一、内容单薄的问题，我们对《尘封的星舰工作站》完成全方位剧情升级。补充完整马斯克淘汰 XP 工作站背景，设计四层递进解谜流程，将线索拆分在桌面图标、文本文件、加密档案、回收站删除文件、隐藏浏览器页面中，设置分段密钥反转机制。同时区分普通结局与隐藏完美结局，玩家需要手动输入隐藏网址解锁特斯拉奖励，完整保留 Grok、特斯拉两大核心奖励设定，解谜流程有铺垫、反转、隐藏内容，解决原版剧情单调问题。游戏内所有文件、窗口、图标对应独立派生类，剧情进度、解锁状态统一由 `StoryManager` 管理，UI 与业务完全分离。
 
-Here are some useful resources if you want to learn more about CMake:
-
-- [Official CMake Tutorial](https://cmake.org/cmake/help/latest/guide/tutorial/)
-- [How to Use CMake Without the Agonizing Pain - Part 1](https://alexreinking.com/blog/how-to-use-cmake-without-the-agonizing-pain-part-1.html)
-- [How to Use CMake Without the Agonizing Pain - Part 2](https://alexreinking.com/blog/how-to-use-cmake-without-the-agonizing-pain-part-2.html)
-- [Better CMake YouTube series by Jefferon Amstutz](https://www.youtube.com/playlist?list=PL8i3OhJb4FNV10aIZ8oF0AA46HgA2ed8g)
-
-## License
-
-The source code is dual licensed under Public Domain and MIT -- choose whichever you prefer.
+### 3.2 类体系设计汇报话术
+针对原型版本所有类相互独立、无继承、代码复用率低的问题，我们搭建三条完整继承链搭配独立剧情管理类的面向对象架构。
+第一条是文件继承链，顶层 `FileObject` 抽象基类统一所有文件打开接口，派生文本、加密、已删除、可执行四类文件，依靠多态消除大量类型判断；
+第二条是窗口继承链，`PuzzleWindowBase` 封装窗口拖拽、关闭、标题栏等通用逻辑，记事本、浏览器、密码弹窗、结局窗口仅重写内部渲染，大幅复用代码；
+第三条是桌面图标继承链，以 `AppIconBase` 为父类，严格实现 “一个图标一个类”，每个图标重写双击专属行为，桌面容器通过基类指针统一调度全部图标。
+除此之外我们设计单例 `StoryManager` 剧情管理器，统一管控关卡、密钥、解锁状态，实现 UI 与剧情解耦。整套架构充分利用继承实现代码复用、纯虚函数实现多态，符合单一职责与开闭原则，满足课程面向对象考核要求。
