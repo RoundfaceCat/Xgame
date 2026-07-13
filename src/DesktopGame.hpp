@@ -19,7 +19,7 @@ constexpr float TASKBAR_H        = 40.f;
 constexpr float DESKTOP_H        = WIN_H - TASKBAR_H;
 constexpr float ICON_W           = 84.f;
 constexpr float ICON_H           = 84.f;
-constexpr float ICON_CELL_H      = 70.f;
+constexpr float ICON_CELL_H      = 104.f;
 constexpr float GRID_COL_W       = 100.f;   // grid cell width
 constexpr float GRID_ROW_H       = 100.f;   // grid cell height
 constexpr float GRID_MARGIN_X    = 10.f;    // left margin
@@ -475,6 +475,9 @@ public:
 class Desktop {
 public:
     std::vector<AppIconBase*> icons;
+    
+    // Global App Icon (for window titlebars and taskbar)
+    sf::Texture       appIconTex;
     std::vector<PuzzleWindowBase*>  openWindows;
 
     sf::RenderWindow* renderWin = nullptr;

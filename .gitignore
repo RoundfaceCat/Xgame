@@ -1,6 +1,10 @@
-build
-out
-.cache
-.idea
-.vs
-.vscode
+build/
+build-verify/
+out/
+.cache/
+.idea/
+.vs/
+.vscode/
+*.obj
+*.exe
+*.log
