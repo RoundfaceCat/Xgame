@@ -1,8 +1,0 @@
-[
-{
-  "directory": "D:/Xgame/Xgame/build-verify",
-  "command": "C:\\msys64\\mingw64\\bin\\cc.exe -DSB_CONFIG_UNITY -ID:/Xgame/Xgame/build-verify/_deps/sheenbidi-src/Headers -ID:/Xgame/Xgame/build-verify/_deps/sheenbidi-src/Source -w -o _deps\\sheenbidi-build\\CMakeFiles\\SheenBidi.dir\\Source\\SheenBidi.c.obj -c D:\\Xgame\\Xgame\\build-verify\\_deps\\sheenbidi-src\\Source\\SheenBidi.c",
-  "file": "D:/Xgame/Xgame/build-verify/_deps/sheenbidi-src/Source/SheenBidi.c",
-  "output": "D:/Xgame/Xgame/build-verify/_deps/sheenbidi-build/CMakeFiles/SheenBidi.dir/Source/SheenBidi.c.obj"
-}
-]

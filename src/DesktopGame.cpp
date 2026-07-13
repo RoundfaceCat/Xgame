@@ -6,7 +6,7 @@
 
 // U8 string helper for MSVC
 inline sf::String U8(const char* s) { return sf::String::fromUtf8(s, s + std::strlen(s)); }
-inline sf::String U8(const std::string& s) { return sf::String::fromUtf8(s.begin(), s.end()); }
+inline sf::String U8(const std::string& s) { return sf::String::fromUtf8(s.data(), s.data() + s.size()); }
 
 Desktop* g_Desktop = nullptr;
 
@@ -363,7 +363,19 @@ void PuzzleWindowBase::renderFrame(sf::RenderWindow& win) {
     frame.setPosition(position); frame.setSize(sf::Vector2f(width, height)); win.draw(frame); drawDoubleBevel(win, bounds(), true);
     titleBar.setPosition(sf::Vector2f(position.x + BORDER, position.y + BORDER)); titleBar.setSize(sf::Vector2f(width - 2*BORDER, TITLEBAR_H - BORDER));
     titleBar.setFillColor(isActive ? C::TitleActive : C::TitleInactive); win.draw(titleBar);
-    titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f)); win.draw(titleText);
+    if (g_Desktop && g_Desktop->appIconTex.getSize().x > 0) {
+        sf::Sprite iconSpr(g_Desktop->appIconTex);
+        iconSpr.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f));
+        float scale = (TITLEBAR_H - BORDER * 2.f - 4.f) / (float)iconSpr.getTexture().getSize().y;
+        iconSpr.setScale(sf::Vector2f(scale, scale));
+        std::cout << "Drawing title icon: scale=" << scale << " pos.x=" << iconSpr.getPosition().x << std::endl;
+        win.draw(iconSpr);
+        titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f + iconSpr.getGlobalBounds().size.x + 4.f, position.y + BORDER + 2.f));
+    } else {
+        std::cout << "No appIconTex or g_Desktop is null!" << std::endl;
+        titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f));
+    }
+    win.draw(titleText);
     drawCaptionButton(win, closeBtnRect(), *uiFont, "X", C::CloseBtn);
     if (canMaximize) drawCaptionButton(win, maxBtnRect(), *uiFont, isMaximized ? "❐" : "□", C::BevelMedium);
     if (canMinimize) drawCaptionButton(win, minBtnRect(), *uiFont, "_", C::BevelMedium);
@@ -511,16 +523,8 @@ void FileListWin::renderContent(sf::RenderWindow& win) {
         // BUGFIX: MUST position text BEFORE querying its bounds
         fn.setPosition(sf::Vector2f(sx + ICON_W/2.f - fn.getLocalBounds().size.x/2.f, sy + 36.f));
         
-        if ((int)i == selectedIdx) {
-            fn.setFillColor(C::TextWhite); 
-            sf::FloatRect textBg = fn.getGlobalBounds();
-            sf::RectangleShape tbg(sf::Vector2f(textBg.size.x + 4.f, textBg.size.y + 4.f)); 
-            tbg.setPosition(sf::Vector2f(textBg.position.x - 2.f, textBg.position.y - 2.f)); 
-            tbg.setFillColor(C::SelectBlue); 
-            win.draw(tbg);
-        } else { 
-            fn.setFillColor(C::TextBlack); 
-        }
+        // Always draw text in black (no blue-bg highlight on name, like real XP)
+        fn.setFillColor(C::TextBlack);
         win.draw(fn);
         
         sx += 100.f; if (sx + 100.f > cr.position.x + cr.size.x) { sx = listRect.position.x + 20.f; sy += 80.f; }
@@ -541,7 +545,12 @@ void FileListWin::handleInput(const sf::Event& event) {
                     selectedIdx == static_cast<int>(i) &&
                     listClickClock.getElapsedTime().asMilliseconds() < DOUBLE_CLICK_MS;
                 selectedIdx = static_cast<int>(i);
-                if (isDouble) openSelectedFile();
+                if (isDouble) {
+                    openSelectedFile();
+                } else {
+                    // Single click: play select sound
+                    Sfx::get().play(Sfx::Id::Click);
+                }
                 listClickClock.restart();
                 return;
             }
@@ -708,18 +717,36 @@ AppIconBase::AppIconBase(sf::Vector2f p, const std::string& lbl, const std::stri
     labelText.setFont(font); labelText.setCharacterSize(16); labelText.setString(U8(label)); labelText.setFillColor(C::TextWhite);
 }
 void AppIconBase::render(sf::RenderWindow& win) {
-    iconSpr.setPosition(sf::Vector2f(position.x + (width - ICON_W)/2.f, position.y + 4.f));
+    sf::FloatRect tr = labelText.getLocalBounds();
+    float tx = position.x + width/2.f - tr.size.x/2.f;
+    float ty = position.y + ICON_H + 4.f;
+    labelText.setPosition(sf::Vector2f(tx, ty));
+
     if (selected || highlight) {
-        sf::RectangleShape filter(sf::Vector2f(ICON_W, ICON_H)); filter.setPosition(iconSpr.getPosition()); filter.setFillColor(highlight ? sf::Color(255, 255, 0, 100) : C::SelectIcon); win.draw(filter);
+        // Single unified box: from just above icon to just below label text
+        const float padX = 5.f;
+        const float boxTop    = position.y + 2.f;
+        const float boxBottom = ty + tr.size.y + 4.f;
+        const float boxCX     = position.x + width / 2.f;
+        const float boxHalfW  = std::max(ICON_W / 2.f + padX, tr.size.x / 2.f + padX);
+
+        sf::RectangleShape selBox(sf::Vector2f(boxHalfW * 2.f, boxBottom - boxTop));
+        selBox.setPosition(sf::Vector2f(boxCX - boxHalfW, boxTop));
+        selBox.setFillColor(highlight ? sf::Color(255, 255, 0, 100) : C::SelectIcon);
+        win.draw(selBox);
     }
+
+    iconSpr.setPosition(sf::Vector2f(position.x + (width - ICON_W)/2.f, position.y + 4.f));
     win.draw(iconSpr);
-    sf::FloatRect tr = labelText.getLocalBounds(); float tx = position.x + width/2 - tr.size.x/2; float ty = position.y + ICON_H + 1.f;
-    if (selected) {
-        sf::RectangleShape tbg(sf::Vector2f(tr.size.x + 6.f, tr.size.y + 6.f)); tbg.setPosition(sf::Vector2f(tx - 3.f, ty - 3.f)); tbg.setFillColor(C::SelectBlue); win.draw(tbg);
-    } else {
-        sf::Text ts = labelText; ts.setFillColor(sf::Color(0,0,0,150)); ts.setPosition(sf::Vector2f(tx + 1.f, ty + 1.f)); win.draw(ts);
+
+    if (!selected) {
+        // Drop shadow when not selected
+        sf::Text ts = labelText;
+        ts.setFillColor(sf::Color(0, 0, 0, 150));
+        ts.setPosition(sf::Vector2f(tx + 1.f, ty + 1.f));
+        win.draw(ts);
     }
-    labelText.setPosition(sf::Vector2f(tx, ty)); win.draw(labelText);
+    win.draw(labelText);
 }
 bool AppIconBase::isMouseHit(sf::Vector2f mp) { return bounds().contains(mp); }
 void AppIconBase::buildContextMenu(std::vector<MenuItem>& out) {
@@ -895,6 +922,11 @@ Desktop::~Desktop() { for (auto i : icons) delete i; for (auto w : openWindows) 
 void Desktop::init(sf::RenderWindow& win) {
     renderWin = &win;
     Sfx::get().init();
+    if (!appIconTex.loadFromFile("assets/app_icon.jpg")) {
+        appIconTex.loadFromFile("D:/Xgame/Xgame/assets/app_icon.jpg");
+    }
+    std::cout << "appIconTex loaded size: " << appIconTex.getSize().x << "x" << appIconTex.getSize().y << std::endl;
+    appIconTex.setSmooth(true);
     // Prefer bundled font, then common Chinese system fonts, then Latin fallback
     const char* fontCandidates[] = {
         "assets/fonts/NotoSansSC-Regular.otf",
@@ -1023,6 +1055,36 @@ sf::FloatRect Desktop::taskButtonRect(std::size_t index) const {
     float startX = 100.f; float w = TASK_BTN_W; return sf::FloatRect(sf::Vector2f(startX + index * (w + 4.f), WIN_H - TASKBAR_H + 4.f), sf::Vector2f(w, TASKBAR_H - 8.f));
 }
 void Desktop::handleTaskbarClick(sf::Vector2f mp) {
+    // Start button
+    if (startSpr.getGlobalBounds().contains(mp)) {
+        Sfx::get().play(Sfx::Id::Menu);
+        std::vector<MenuItem> items;
+        items.push_back({"注销(L)", [this](){
+            Sfx::get().play(Sfx::Id::Click);
+            // Reset all story progress (re-login to a fresh session)
+            auto& story = StoryManager::getInstance();
+            story.storyStage       = 1;
+            story.isRewardUnlocked = false;
+            story.hasPerfectClear  = false;
+            story.hasNormalClear   = false;
+            story.recycleBinUnlocked = false;
+            story.hasDocClue       = false;
+            story.hasBrowserClue   = false;
+            story.archiveOpened    = false;
+            story.keyPart2Restored = false;
+            // Close all open windows
+            for (auto w : openWindows) w->closeWindow();
+            // Refresh desktop icon visibility
+            syncStoryVisuals();
+        }, true});
+        items.push_back({"", nullptr, false, true}); // separator
+        items.push_back({"关闭计算机(U)", [this](){ renderWin->close(); }, true});
+        // Fixed position: always appear above the Start button at left edge
+        sf::FloatRect startBounds = startSpr.getGlobalBounds();
+        sf::Vector2f menuPos(startBounds.position.x, startBounds.position.y);
+        shellMenu.show(menuPos, items);
+        return;
+    }
     auto vws = visibleTaskWindows();
     for (std::size_t i = 0; i < vws.size(); ++i) {
         if (taskButtonRect(i).contains(mp)) {
@@ -1183,7 +1245,17 @@ void Desktop::renderTaskbar() {
         sf::RectangleShape bline(sf::Vector2f(br.size.x, 1.f)); bline.setPosition(br.position); bline.setFillColor(sf::Color(255,255,255,50)); renderWin->draw(bline);
         bline.setPosition(sf::Vector2f(br.position.x, br.position.y+br.size.y-1.f)); bline.setFillColor(sf::Color(0,0,0,100)); renderWin->draw(bline);
         sf::Text t = vws[i]->titleText;
-        t.setPosition(sf::Vector2f(br.position.x + 10.f, br.position.y + 4.f));
+        if (appIconTex.getSize().x > 0) {
+            std::cout << "Taskbar: appIconTex size > 0" << std::endl;
+            sf::Sprite iconSpr(appIconTex);
+            iconSpr.setPosition(sf::Vector2f(br.position.x + 4.f, br.position.y + 4.f));
+            float scale = 16.f / iconSpr.getTexture().getSize().y;
+            iconSpr.setScale(sf::Vector2f(scale, scale));
+            renderWin->draw(iconSpr);
+            t.setPosition(sf::Vector2f(br.position.x + 4.f + iconSpr.getGlobalBounds().size.x + 4.f, br.position.y + 4.f));
+        } else {
+            t.setPosition(sf::Vector2f(br.position.x + 10.f, br.position.y + 4.f));
+        }
         // Truncate by Unicode code points (not raw UTF-8 bytes)
         sf::String title = t.getString();
         if (title.getSize() > 8) {
