@@ -23,11 +23,12 @@ else()
     target_compile_options(main PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
 endif()
 
-# Copy assets folder to output directory after build
-add_custom_command(TARGET main POST_BUILD
+# Always copy assets folder to output directory during build, even if source code hasn't changed
+add_custom_target(CopyAssets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     "${CMAKE_CURRENT_SOURCE_DIR}/assets"
     "$<TARGET_FILE_DIR:main>/assets"
 )
+add_dependencies(main CopyAssets)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT main)

@@ -368,11 +368,9 @@ void PuzzleWindowBase::renderFrame(sf::RenderWindow& win) {
         iconSpr.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f));
         float scale = (TITLEBAR_H - BORDER * 2.f - 4.f) / (float)iconSpr.getTexture().getSize().y;
         iconSpr.setScale(sf::Vector2f(scale, scale));
-        std::cout << "Drawing title icon: scale=" << scale << " pos.x=" << iconSpr.getPosition().x << std::endl;
         win.draw(iconSpr);
         titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f + iconSpr.getGlobalBounds().size.x + 4.f, position.y + BORDER + 2.f));
     } else {
-        std::cout << "No appIconTex or g_Desktop is null!" << std::endl;
         titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f));
     }
     win.draw(titleText);
@@ -925,7 +923,6 @@ void Desktop::init(sf::RenderWindow& win) {
     if (!appIconTex.loadFromFile("assets/app_icon.jpg")) {
         appIconTex.loadFromFile("D:/Xgame/Xgame/assets/app_icon.jpg");
     }
-    std::cout << "appIconTex loaded size: " << appIconTex.getSize().x << "x" << appIconTex.getSize().y << std::endl;
     appIconTex.setSmooth(true);
     // Prefer bundled font, then common Chinese system fonts, then Latin fallback
     const char* fontCandidates[] = {
@@ -1246,7 +1243,6 @@ void Desktop::renderTaskbar() {
         bline.setPosition(sf::Vector2f(br.position.x, br.position.y+br.size.y-1.f)); bline.setFillColor(sf::Color(0,0,0,100)); renderWin->draw(bline);
         sf::Text t = vws[i]->titleText;
         if (appIconTex.getSize().x > 0) {
-            std::cout << "Taskbar: appIconTex size > 0" << std::endl;
             sf::Sprite iconSpr(appIconTex);
             iconSpr.setPosition(sf::Vector2f(br.position.x + 4.f, br.position.y + 4.f));
             float scale = 16.f / iconSpr.getTexture().getSize().y;
