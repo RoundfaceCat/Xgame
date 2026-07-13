@@ -1,5 +1,6 @@
 #pragma once
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <string>
 #include <vector>
 #include <functional>
@@ -7,20 +8,23 @@
 #include <optional>
 #include <set>
 #include <fstream>
+#include <array>
+#include <memory>
+#include <cmath>
 
 // ── Shell metrics (simulating Win32 / XP metrics) ───────────────
 constexpr float WIN_W            = 1280.f;
 constexpr float WIN_H            = 800.f;
 constexpr float TASKBAR_H        = 40.f;
 constexpr float DESKTOP_H        = WIN_H - TASKBAR_H;
-constexpr float ICON_W           = 96.f;
-constexpr float ICON_H           = 96.f;
-constexpr float ICON_CELL_H      = 96.f;
+constexpr float ICON_W           = 84.f;
+constexpr float ICON_H           = 84.f;
+constexpr float ICON_CELL_H      = 70.f;
 constexpr float GRID_COL_W       = 100.f;   // grid cell width
-constexpr float GRID_ROW_H       = 110.f;   // grid cell height
+constexpr float GRID_ROW_H       = 100.f;   // grid cell height
 constexpr float GRID_MARGIN_X    = 10.f;    // left margin
 constexpr float GRID_MARGIN_Y    = 10.f;    // top margin
-constexpr int   GRID_COLS        = 2;       // default icon columns (left side)
+constexpr int   GRID_COLS        = 5;       // default icon columns (left side)
 constexpr std::string_view ICON_POS_FILE = "icon_positions.ini";
 constexpr float TITLEBAR_H       = 22.f;
 constexpr float BORDER           = 3.f;
@@ -57,6 +61,45 @@ void drawDoubleBevel(sf::RenderWindow& win, sf::FloatRect rect, bool raised);
 void drawCaptionButton(sf::RenderWindow& win, sf::FloatRect rect,
                        const sf::Font& font, const std::string& glyph,
                        sf::Color face, bool pressed = false);
+
+// ── Procedural XP-style UI sound effects ───────────────────────
+class Sfx {
+public:
+    enum class Id {
+        Click = 0,   // soft UI click / select
+        Open,        // open window / double-click
+        Menu,        // context / start menu
+        Error,       // wrong password / access denied
+        Ok,          // password accepted
+        Unlock,      // archive / recycle unlocked
+        Restore,     // recycle restore
+        Notify,      // clue / stage advance
+        Ending,      // normal clear
+        Perfect,     // perfect clear
+        Count
+    };
+
+    static Sfx& get();
+    void init();
+    void play(Id id);
+    void setEnabled(bool on) { enabled = on; }
+    bool isEnabled() const { return enabled; }
+
+private:
+    Sfx() = default;
+    bool enabled = true;
+    bool ready   = false;
+    std::array<sf::SoundBuffer, static_cast<std::size_t>(Id::Count)> buffers{};
+    // Pool so short sounds can overlap
+    static constexpr std::size_t kVoices = 8;
+    std::array<std::unique_ptr<sf::Sound>, kVoices> voices{};
+    std::size_t nextVoice = 0;
+
+    static sf::SoundBuffer makeBeep(float freqHz, float durationSec,
+                                    float volume = 0.45f, bool decay = true);
+    static sf::SoundBuffer makeChord(std::initializer_list<float> freqs,
+                                     float durationSec, float volume = 0.4f);
+};
 
 class Desktop;
 
@@ -172,7 +215,9 @@ public:
 
 class LockedFile : public FileObject {
 public:
-    LockedFile(const std::string& n) : FileObject(n, "locked") {}
+    std::string content;
+    LockedFile(const std::string& n, const std::string& c = "")
+        : FileObject(n, "locked"), content(c) {}
     void open() override;
 };
 
@@ -264,6 +309,7 @@ public:
     bool               showSecretPage = false;
     bool               editingAddr    = false;
     const sf::Font*    winFont = nullptr;
+    sf::Clock          blinkClock;
 
     BrowserWindow(sf::Vector2f p, float w, float h, const sf::Font& font);
     void renderContent(sf::RenderWindow& win) override;
@@ -278,10 +324,15 @@ public:
     const sf::Font*       winFont = nullptr;
     int                   selectedIdx = -1;
     sf::Clock             listClickClock;
-    std::string           folderPath; 
+    std::string           folderPath;
 
     sf::RectangleShape restoreBtn;
     sf::Text           restoreBtnText;
+    
+    sf::Texture           texFolder;
+    sf::Texture           texFile;
+    sf::Texture           texExe;
+    sf::Texture           texComputer;
 
     FileListWin(const std::string& winTitle, bool recycleBin,
                 sf::Vector2f p, float w, float h, const sf::Font& font);
@@ -324,6 +375,7 @@ public:
     const sf::Font*    winFont = nullptr;
     bool               hasError = false;
     int                mode     = 0; // 0 档案室 / 1 完美结局
+    sf::Clock          blinkClock;
 
     PasswordDialog(sf::Vector2f p, float w, float h,
                    const sf::Font& font, int pwdMode);
@@ -366,8 +418,8 @@ public:
     sf::Text    labelText;
     bool        selected  = false;
     bool        highlight = false;
-int         gridSlot  = -1;   // which grid slot this icon occupies (-1 = unassigned)
-std::string iconId;           // stable identifier for position saving
+    int         gridSlot  = -1;   // which grid slot this icon occupies (-1 = unassigned)
+    std::string iconId;           // stable identifier for position saving
 
     AppIconBase(sf::Vector2f p, const std::string& lbl,
                 const std::string& texPath, const sf::Font& font);
@@ -427,7 +479,7 @@ public:
 
     sf::RenderWindow* renderWin = nullptr;
     sf::Font          systemFont;
-    sf::Clock         clickClock;
+    sf::Clock         clickClock;           // time since last completed single-click on an icon
     AppIconBase*      lastClickedIcon = nullptr;
 
     // Icon drag state
@@ -447,17 +499,17 @@ public:
     std::optional<sf::Text> startLabel;
     sf::Clock          animClock;
 
-    TeslaExeIcon*  rewardIcon  = nullptr;
+    TeslaExeIcon*     rewardIcon  = nullptr;
+    RecycleBinIcon*   recycleIcon = nullptr;
+    SecretFolderIcon* secretIcon  = nullptr;
 
-// Grid slot management
-std::set<int>  usedSlots;
-int  allocateSlot();
-sf::Vector2f slotPosition(int slot) const;
-int  nearestFreeSlot(sf::Vector2f pos) const;
-void saveIconPositions() const;
-void loadIconPositions();
-    RecycleBinIcon* recycleIcon = nullptr;
-    SecretFolderIcon* secretIcon = nullptr;
+    // Grid slot management
+    std::set<int>  usedSlots;
+    int  allocateSlot();
+    sf::Vector2f slotPosition(int slot) const;
+    int  nearestFreeSlot(sf::Vector2f pos) const;
+    void saveIconPositions() const;
+    void loadIconPositions();
 
     Desktop();
     ~Desktop();
