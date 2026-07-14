@@ -201,23 +201,15 @@ void StoryManager::unlockRewardExe() {
     if (g_Desktop) g_Desktop->syncStoryVisuals();
 }
 void StoryManager::triggerNormalEnding() {
+    // 只设置标志 + 播放音效。窗口创建完全交给 Desktop 主循环安全处理
+    if (hasNormalClear && !hasPerfectClear) return; // 已触发过
     hasNormalClear = true;
-    if (!g_Desktop) return;
-    if (g_Desktop->activateExisting("系统奖励")) return;
     Sfx::get().play(Sfx::Id::Ending);
-    g_Desktop->addWindow(new RewardAnimWindow(
-        {WIN_W / 2 - 250.f, WIN_H / 2 - 200.f}, 500.f, 400.f, g_Desktop->systemFont));
 }
 void StoryManager::triggerPerfectEnding() {
+    // 只设置标志。音效和窗口改造全部放到主循环，彻底安全
     hasPerfectClear = true;
-    if (!g_Desktop) return;
-    // Close any existing reward window so perfect-ending text can show
-    for (auto* w : g_Desktop->openWindows) {
-        if (w->title == "系统奖励") w->closeWindow();
-    }
-    Sfx::get().play(Sfx::Id::Perfect);
-    g_Desktop->addWindow(new RewardAnimWindow(
-        {WIN_W / 2 - 250.f, WIN_H / 2 - 200.f}, 500.f, 400.f, g_Desktop->systemFont));
+    hasNormalClear = true;
 }
 void StoryManager::advanceStage(int stage) { if (storyStage < stage) storyStage = stage; }
 
@@ -289,27 +281,30 @@ bool ContextMenu::isMouseHit(sf::Vector2f mp) { return open && bounds().contains
 
 void TextFile::open() {
     if (!g_Desktop) return;
+    // 设计文档：阅读项目备忘录推进阶段1→2
     if (name.find("项目备忘录") != std::string::npos)
         StoryManager::getInstance().markDocClueRead();
-    if (name.find("密钥上半段") != std::string::npos)
+    // 兼容旧路径：如果有人直接以 TextFile 形式打开密钥文档也解锁
+    if (name.find("密钥上半段") != std::string::npos || name.find("密钥") != std::string::npos)
         StoryManager::getInstance().unlockRecycleBin();
     if (g_Desktop->activateExisting(name)) return;
-    g_Desktop->addWindow(new NotepadWindow(name, content, {100, 100}, 500, 400, g_Desktop->systemFont));
+    g_Desktop->addWindow(new NotepadWindow(name, content, {100, 100}, 520, 420, g_Desktop->systemFont));
 }
 void LockedFile::open() {
     if (!g_Desktop) return;
     auto& story = StoryManager::getInstance();
     if (story.archiveOpened) {
+        // 阅读密钥文档后正式解锁回收站（与 SecretFolder 打开双重保险，防卡关）
         if (name.find("密钥") != std::string::npos)
             story.unlockRecycleBin();
         if (g_Desktop->activateExisting(name)) return;
         const std::string body = content.empty()
-            ? "文件已解密。\n完整密钥 = 试飞日期 + 特斯拉 Model S 出厂编号\n后半段密钥已被移入回收站永久删除。"
+            ? "【文件已解密】\n完整密钥 = 试飞日期 + 特斯拉 Model S 出厂编号\n后半段密钥已被移入回收站永久删除。\n请前往回收站还原文件。"
             : content;
-        g_Desktop->addWindow(new NotepadWindow(name, body, {100, 100}, 500, 400, g_Desktop->systemFont));
+        g_Desktop->addWindow(new NotepadWindow(name, body, {100, 100}, 520, 420, g_Desktop->systemFont));
     } else {
         if (g_Desktop->activateExisting("系统安全校验")) return;
-        g_Desktop->addWindow(new PasswordDialog({200, 150}, 320, 180, g_Desktop->systemFont, 0));
+        g_Desktop->queueWindow(new PasswordDialog({200, 150}, 340, 200, g_Desktop->systemFont, 0));
     }
 }
 void DeletedFile::open() {
@@ -317,11 +312,11 @@ void DeletedFile::open() {
     if (!StoryManager::getInstance().keyPart2Restored) {
         g_Desktop->addWindow(new MsgBoxWin(
             "回收站提示",
-            "该文件已被删除，请先将其还原。\n提示：选中文件后点击上方“还原”按钮。",
-            {300, 200}, 300, 150, g_Desktop->systemFont));
+            "该文件已被永久删除。\n\n请先选中文件，然后点击上方【还原选定项目】按钮\n（或右键 → 还原）。\n还原后即可双击查看密钥后半段。",
+            {280, 180}, 360, 180, g_Desktop->systemFont));
     } else {
         if (g_Desktop->activateExisting(name)) return;
-        g_Desktop->addWindow(new NotepadWindow(name, content, {100, 100}, 500, 400, g_Desktop->systemFont));
+        g_Desktop->addWindow(new NotepadWindow(name, content, {100, 100}, 520, 400, g_Desktop->systemFont));
     }
 }
 void ExeProgramFile::open() {
@@ -416,17 +411,41 @@ void BrowserWindow::renderContent(sf::RenderWindow& win) {
     sf::Text goTxt(*winFont, U8("转到"), 12u); goTxt.setFillColor(C::TextBlack); goTxt.setPosition(sf::Vector2f(goBtn.getPosition().x + 10.f, goBtn.getPosition().y + 3.f)); win.draw(goTxt);
     sf::FloatRect pageRect(sf::Vector2f(cr.position.x, cr.position.y + 40.f), sf::Vector2f(cr.size.x, cr.size.y - 60.f));
     sf::RectangleShape page(pageRect.size); page.setPosition(pageRect.position); page.setFillColor(C::ClientWhite); win.draw(page); drawDoubleBevel(win, pageRect, false);
-    if (showSecretPage) {
+    if (perfectVictory) {
         contentText.setString(U8(
-            "【系统覆盖】\n已接入特斯拉奖励系统。\n\n"
-            "请输入完整认证密钥（12 位数字）。\n"
-            "提示：试飞日期 + Model S 出厂编号\n\n"
-            "(请在弹出的校验窗口中输入)"));
+            "★★★★★★★★★★★★★★★★★★★★★★★★\n"
+            "        ★ 完美隐藏结局 ★\n"
+            "★★★★★★★★★★★★★★★★★★★★★★★★\n\n"
+            "密码校验成功！\n\n"
+            "已解锁：无限制 Grok 永久使用权\n"
+            "已解锁：特斯拉 Model S 免费兑换资格\n\n"
+            "恭喜你完整解开了埃隆·马斯克的\n"
+            "尘封星舰工作站全部谜题！\n\n"
+            "感谢游玩《尘封的星舰工作站》\n"
+            "================================\n"
+            "（可关闭此窗口，桌面已永久标记完美通关）"));
+    } else if (showSecretPage) {
+        contentText.setString(U8(
+            "【系统覆盖 · 特斯拉奖励系统】\n"
+            "================================\n"
+            "已成功接入隐藏奖励通道。\n\n"
+            "请输入完整认证密钥（12 位数字）以解锁终极奖励。\n\n"
+            "提示：完整密钥 = 星舰首飞日期 + 特斯拉 Model S 出厂编号\n\n"
+            "(系统已自动弹出密码校验窗口，请在窗口中输入)"));
     } else {
         contentText.setString(U8(
-            "SpaceX 历史档案库\n===================\n重大事件回顾：\n"
-            "星舰首飞（Starship Orbital Test Flight）\n发射日期：20230420\n...\n"
-            "(页面底部小字：密钥后半段与特斯拉Model S出厂编号相关)"));
+            "SpaceX 历史档案库\n"
+            "===============================\n"
+            "重大事件回顾（机密级）：\n\n"
+            "【头条】星舰首飞（Starship Orbital Test Flight）\n"
+            "发射日期：20230420\n"
+            "地点：Starbase / Boca Chica\n"
+            "状态：成功进入轨道测试\n\n"
+            "备注：本页面由 2008 年内部系统归档生成。\n"
+            "Grok 早期训练日志中亦有相关记录。\n\n"
+            "--------------------------------\n"
+            "(页面底部小字：密钥后半段与特斯拉 Model S 出厂编号相关)\n"
+            "(提示：完整解开谜题可获得无限制 Grok 使用权 + 特斯拉兑换资格)"));
     }
     contentText.setPosition(sf::Vector2f(pageRect.position.x + 10.f, pageRect.position.y + 10.f)); win.draw(contentText);
     sf::RectangleShape sb(sf::Vector2f(cr.size.x, 20.f)); sb.setPosition(sf::Vector2f(cr.position.x, cr.position.y + cr.size.y - 20.f)); sb.setFillColor(C::StatusBar); win.draw(sb); drawDoubleBevel(win, sb.getGlobalBounds(), false);
@@ -452,15 +471,25 @@ void BrowserWindow::navigateToAddress() {
 
     if (addr == "tesla-prize.local" || addressInput == "tesla-prize.local") {
         showSecretPage = true;
+        perfectVictory = false;
         if (g_Desktop) {
             if (!g_Desktop->activateExisting("Grok 认证"))
-                g_Desktop->addWindow(new PasswordDialog(
-                    {position.x + 50, position.y + 50}, 320, 180, *winFont, 1));
+                // 使用 queue 防止闪退
+                g_Desktop->queueWindow(new PasswordDialog(
+                    {position.x + 50, position.y + 50}, 340, 200, *winFont, 1));
         }
     } else {
         showSecretPage = false;
+        perfectVictory = false;
         StoryManager::getInstance().markBrowserClueSeen();
     }
+}
+void BrowserWindow::showPerfectVictory() {
+    perfectVictory = true;
+    showSecretPage = true;
+    addressInput = "tesla-prize.local";
+    title = "Windows Internet Explorer - ★ 完美结局 ★";
+    titleText.setString(U8(title));
 }
 
 FileListWin::FileListWin(const std::string& winTitle, bool recycleBin, sf::Vector2f p, float w, float h, const sf::Font& font) : PuzzleWindowBase(winTitle, p, w, h, font), isRecycleBinMode(recycleBin), winFont(&font), restoreBtnText(font) {
@@ -570,13 +599,18 @@ void FileListWin::openSelectedFile() {
 void FileListWin::restoreSelectedFile() {
     if (selectedIdx < 0 || selectedIdx >= (int)files.size()) return;
     if (!isRecycleBinMode) return;
-    StoryManager::getInstance().onKeyPart2Restored();
+    // 仅对目标文件触发剧情推进（防止误操作）
+    const std::string& fname = files[selectedIdx]->name;
+    if (fname.find("特斯拉") != std::string::npos || fname.find("编号") != std::string::npos) {
+        StoryManager::getInstance().onKeyPart2Restored();
+    }
     if (files[selectedIdx]->iconType == "txt" || files[selectedIdx]->iconType == "deleted")
         files[selectedIdx]->iconType = "restored";
     if (g_Desktop)
         g_Desktop->addWindow(new MsgBoxWin(
-            "回收站", "文件已还原成功！\n现在可以双击打开查看内容。",
-            {position.x + 50, position.y + 50}, 320, 160, *winFont));
+            "回收站",
+            "文件已还原成功！\n\n现在可以双击打开查看内容，\n获取密钥后半段（2012），\n然后拼接完整密钥 202304202012。\n\n桌面已解锁 Starship.exe 彩蛋程序。",
+            {position.x + 50, position.y + 50}, 380, 200, *winFont));
     refreshFiles();
 }
 void FileListWin::refreshFiles() {
@@ -592,7 +626,8 @@ void FileListWin::buildClientContextMenu(std::vector<MenuItem>& out, sf::Vector2
 PasswordDialog::PasswordDialog(sf::Vector2f p, float w, float h, const sf::Font& font, int pwdMode) : PuzzleWindowBase(pwdMode == 0 ? "系统安全校验" : "Grok 认证", p, w, h, font), winFont(&font), mode(pwdMode), promptText(font), inputText(font), okText(font), cancelText(font) {
     isModal = true; canMinimize = false; canMaximize = false;
     promptText.setFont(font); promptText.setCharacterSize(14); promptText.setFillColor(C::TextBlack);
-    if (mode == 0) promptText.setString(U8("请输入加密档案室访问密钥 (提示:与星舰相关)")); else promptText.setString(U8("请输入完整认证密钥 (数字组合)："));
+    if (mode == 0) promptText.setString(U8("请输入加密档案室访问密钥\n(提示：星舰首飞日期，8位数字)")); 
+    else promptText.setString(U8("请输入完整认证密钥（12位数字）：\n试飞日期 + Model S 出厂编号"));
     inputText.setFont(font); inputText.setCharacterSize(20); inputText.setFillColor(C::TextBlack);
     inputField.setFillColor(C::ClientWhite); okBtn.setFillColor(C::BevelMedium); cancelBtn.setFillColor(C::BevelMedium);
     okText.setFont(font); okText.setCharacterSize(12); okText.setFillColor(C::TextBlack); okText.setString(U8("确定"));
@@ -600,8 +635,14 @@ PasswordDialog::PasswordDialog(sf::Vector2f p, float w, float h, const sf::Font&
 }
 void PasswordDialog::renderContent(sf::RenderWindow& win) {
     sf::FloatRect cr = clientRect();
-    promptText.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + 20.f)); win.draw(promptText);
-    inputField.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + 50.f)); inputField.setSize(sf::Vector2f(cr.size.x - 40.f, 28.f)); win.draw(inputField); drawDoubleBevel(win, inputField.getGlobalBounds(), false);
+    promptText.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + 12.f)); 
+    promptText.setCharacterSize(13);
+    win.draw(promptText);
+    // 多行提示后下移输入框，避免重叠
+    float inputY = cr.position.y + 55.f;
+    inputField.setPosition(sf::Vector2f(cr.position.x + 20.f, inputY)); 
+    inputField.setSize(sf::Vector2f(cr.size.x - 40.f, 28.f)); 
+    win.draw(inputField); drawDoubleBevel(win, inputField.getGlobalBounds(), false);
     const bool cursorOn = !hasError && ((int)(blinkClock.getElapsedTime().asSeconds() * 2) % 2 == 0);
     inputText.setString(hasError ? U8("密码错误！") : U8(typedPassword + (cursorOn ? "|" : "")));
     if (hasError) inputText.setFillColor(sf::Color::Red); else inputText.setFillColor(C::TextBlack);
@@ -629,18 +670,17 @@ void PasswordDialog::submitPassword() {
     if (mode == 0) {
         if (StoryManager::getInstance().tryUnlockArchive(typedPassword)) {
             Sfx::get().play(Sfx::Id::Ok);
-            closeWindow();
-            if (g_Desktop) g_Desktop->addWindow(new MsgBoxWin(
-                "系统提示", "档案室已解锁。\n请前往桌面查看机密档案。",
-                {position.x, position.y}, 300, 150, *winFont));
+            closeWindow();  // 只关闭，桌面图标变化作为反馈
         } else {
             hasError = true;
             Sfx::get().play(Sfx::Id::Error);
         }
     } else {
+        // 隐藏结局：成功后只关闭密码框 + 触发浏览器变通关页（零新窗口，最稳）
         if (StoryManager::getInstance().tryPerfectKey(typedPassword)) {
             Sfx::get().play(Sfx::Id::Ok);
             closeWindow();
+            // triggerPerfectEnding 已在 tryPerfectKey 里调用，会改造浏览器
         } else {
             hasError = true;
             Sfx::get().play(Sfx::Id::Error);
@@ -656,8 +696,19 @@ SystemPropWin::SystemPropWin(sf::Vector2f p, float w, float h, const sf::Font& f
 }
 void SystemPropWin::renderContent(sf::RenderWindow& win) {
     sf::FloatRect cr = clientRect();
-    sf::Text info(*winFont, U8("系统:\nMicrosoft Windows XP\nProfessional\n版本 2008\n\n注册到:\nElon Musk\nSpaceX"), 12u); info.setFillColor(C::TextBlack); info.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + 20.f)); win.draw(info);
-    secretBtn.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + cr.size.y - 80.f)); secretBtn.setSize(sf::Vector2f(100.f, 24.f)); win.draw(secretBtn); drawDoubleBevel(win, secretBtn.getGlobalBounds(), true); secretBtnText.setPosition(sf::Vector2f(secretBtn.getPosition().x + 10.f, secretBtn.getPosition().y + 4.f)); win.draw(secretBtnText);
+    sf::Text info(*winFont, U8(
+        "系统:\nMicrosoft Windows XP\nProfessional\n版本 2008 (内部定制)\n\n"
+        "注册到:\nElon Musk\nSpaceX\n\n"
+        "计算机名: STARSHIP-WS-01\n"
+        "工作组: SPACEX-INTERNAL\n\n"
+        "【注意】本机存储星舰机密与 Grok 早期日志\n"
+        "部分功能已被加密保护"), 12u);
+    info.setFillColor(C::TextBlack); info.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + 15.f)); win.draw(info);
+    // 隐藏按钮：加密档案室（设计文档核心入口）
+    secretBtn.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + cr.size.y - 90.f)); 
+    secretBtn.setSize(sf::Vector2f(130.f, 26.f)); 
+    win.draw(secretBtn); drawDoubleBevel(win, secretBtn.getGlobalBounds(), true); 
+    secretBtnText.setPosition(sf::Vector2f(secretBtn.getPosition().x + 12.f, secretBtn.getPosition().y + 5.f)); win.draw(secretBtnText);
     okBtn.setPosition(sf::Vector2f(cr.position.x + cr.size.x - 180.f, cr.position.y + cr.size.y - 40.f)); okBtn.setSize(sf::Vector2f(70.f, 24.f)); win.draw(okBtn); drawDoubleBevel(win, okBtn.getGlobalBounds(), true); okText.setPosition(sf::Vector2f(okBtn.getPosition().x + 22.f, okBtn.getPosition().y + 4.f)); win.draw(okText);
     cancelBtn.setPosition(sf::Vector2f(cr.position.x + cr.size.x - 90.f, cr.position.y + cr.size.y - 40.f)); cancelBtn.setSize(sf::Vector2f(70.f, 24.f)); win.draw(cancelBtn); drawDoubleBevel(win, cancelBtn.getGlobalBounds(), true); cancelText.setPosition(sf::Vector2f(cancelBtn.getPosition().x + 22.f, cancelBtn.getPosition().y + 4.f)); win.draw(cancelText);
 }
@@ -666,8 +717,8 @@ void SystemPropWin::handleInput(const sf::Event& event) {
         sf::Vector2f mp(mb->position.x, mb->position.y);
         if (secretBtn.getGlobalBounds().contains(mp) && g_Desktop) {
             if (!g_Desktop->activateExisting("系统安全校验"))
-                g_Desktop->addWindow(new PasswordDialog(
-                    {position.x + 50, position.y + 50}, 320, 180, *winFont, 0));
+                g_Desktop->queueWindow(new PasswordDialog(
+                    {position.x + 50, position.y + 50}, 340, 200, *winFont, 0));
         }
         if (okBtn.getGlobalBounds().contains(mp) || cancelBtn.getGlobalBounds().contains(mp))
             closeWindow();
@@ -675,9 +726,27 @@ void SystemPropWin::handleInput(const sf::Event& event) {
 }
 
 RewardAnimWindow::RewardAnimWindow(sf::Vector2f p, float w, float h, const sf::Font& font) : PuzzleWindowBase("系统奖励", p, w, h, font), congratsText(font) {
-    congratsText.setFont(font); congratsText.setCharacterSize(18); congratsText.setFillColor(C::TextBlack); congratsText.setStyle(sf::Text::Bold);
-    if (StoryManager::getInstance().hasPerfectClear) congratsText.setString(U8("★ 完美结局 ★\n密码校验成功！\n已解锁：无限制 Grok 永久使用权\n已解锁：特斯拉 Model S 兑换资格！"));
-    else congratsText.setString(U8("☆ 普通结局 ☆\n基础剧情通关。\n已解锁：无限制 Grok 永久使用权\n(提示：似乎还有隐藏页面未探索)"));
+    congratsText.setFont(font); congratsText.setCharacterSize(16); congratsText.setFillColor(C::TextBlack); congratsText.setStyle(sf::Text::Bold);
+    if (StoryManager::getInstance().hasPerfectClear) {
+        congratsText.setString(U8(
+            "★ 完美隐藏结局 ★\n"
+            "================================\n"
+            "密码校验成功！\n\n"
+            "已解锁：无限制 Grok 永久使用权\n"
+            "已解锁：特斯拉 Model S 免费兑换资格\n\n"
+            "恭喜你完整解开了埃隆·马斯克的\n"
+            "尘封星舰工作站全部谜题！\n"
+            "感谢游玩《尘封的星舰工作站》"));
+    } else {
+        congratsText.setString(U8(
+            "☆ 普通结局 ☆\n"
+            "================================\n"
+            "基础剧情通关成功！\n\n"
+            "已解锁：无限制 Grok 永久使用权\n\n"
+            "（提示：似乎还有隐藏页面未探索……\n"
+            "  试试在 IE 地址栏输入\n"
+            "  tesla-prize.local 并输入完整密钥？）"));
+    }
 }
 void RewardAnimWindow::renderContent(sf::RenderWindow& win) {
     sf::FloatRect cr = clientRect(); sf::RectangleShape bg(cr.size); bg.setPosition(cr.position); bg.setFillColor(C::ClientWhite); win.draw(bg); drawDoubleBevel(win, cr, false);
@@ -757,17 +826,36 @@ void MyDocumentsIcon::onDoubleClick() {
     Sfx::get().play(Sfx::Id::Open);
     if (g_Desktop->activateExisting("我的文档")) return;
     FileListWin* win = new FileListWin("我的文档", false, {100, 100}, 500, 400, g_Desktop->systemFont);
+    win->folderPath = "我的文档";
+    // 完整剧情线索：对应设计文档阶段1 —— 项目备忘录（主线密钥分段机制）
     win->addFile(new TextFile(
         "项目备忘录.txt",
-        "2008年 SpaceX 内部淘汰机密\n\n星舰首飞记录：20230420\n...\n(密钥分为两段，后半段已被删除)"));
+        "【SpaceX 机密 · 项目备忘录】\n"
+        "================================\n"
+        "日期：2008 年内部归档\n"
+        "主题：星舰初代试飞相关核心资料加密保护\n\n"
+        "埃隆特别指示：为防止核心资料外泄，解谜密钥已分段拆分。\n"
+        "第一段密钥 = 星舰首飞（Starship Orbital Test Flight）日期\n"
+        "完整密钥分为两段，后半段已被移至回收站永久删除。\n\n"
+        "提示：请先通过 IE 浏览器查阅历史档案，确认首飞日期。\n"
+        "密钥后半段与特斯拉车型出厂编号相关。\n\n"
+        "—— 本备忘录由 Grok 早期训练日志系统自动生成"));
+    // 加密提示.doc —— 引导系统属性隐藏入口
     win->addFile(new TextFile(
         "加密提示.doc",
-        "加密档案室的入口... 好像在系统属性里？\n提示：右键【我的电脑】→ 属性。"));
+        "【隐藏入口提示】\n"
+        "================================\n"
+        "加密档案室入口并不在桌面普通图标上。\n"
+        "请右键单击【我的电脑】→ 选择【属性(R)】\n"
+        "在系统属性面板中寻找【加密档案室...】隐藏按钮。\n\n"
+        "输入第一段密钥后即可解锁机密文件夹。\n"
+        "解锁后桌面会出现高亮的加密档案室图标。"));
     g_Desktop->addWindow(win);
 }
 void MyDocumentsIcon::buildContextMenu(std::vector<MenuItem>& out) {
     AppIconBase::buildContextMenu(out);
     out.insert(out.begin() + 1, {"", nullptr, false, true});
+    // 设计文档伏笔1：右键小字提示
     out.insert(out.begin() + 2, {"提示:星舰首飞藏在网页，密码不止一组数字", nullptr, false});
 }
 
@@ -787,14 +875,23 @@ void RecycleBinIcon::onDoubleClick() {
         Sfx::get().play(Sfx::Id::Error);
         g_Desktop->addWindow(new MsgBoxWin(
             "拒绝访问",
-            "该文件夹已被加密系统锁定，禁止访问。\n请先通过【加密档案室】验证权限。",
-            {200, 200}, 320, 160, g_Desktop->systemFont));
+            "该文件夹已被加密系统锁定，禁止访问。\n请先通过【加密档案室】验证权限并阅读密钥文档。",
+            {200, 200}, 340, 160, g_Desktop->systemFont));
         return;
     }
     Sfx::get().play(Sfx::Id::Open);
     if (g_Desktop->activateExisting("回收站")) return;
     FileListWin* win = new FileListWin("回收站", true, {200, 200}, 500, 400, g_Desktop->systemFont);
-    auto* deleted = new DeletedFile("特斯拉编号记录.txt", "车辆出厂编号：2012");
+    // 设计文档阶段4：DeletedFile《特斯拉编号记录.txt》
+    auto* deleted = new DeletedFile(
+        "特斯拉编号记录.txt",
+        "【特斯拉车辆出厂记录 · 已删除】\n"
+        "================================\n"
+        "车型：Tesla Model S\n"
+        "出厂编号：2012\n"
+        "备注：此编号为密钥后半段。\n\n"
+        "完整密钥 = 20230420 + 2012 = 202304202012\n\n"
+        "（请使用此完整密钥在浏览器隐藏页面触发完美结局）");
     if (StoryManager::getInstance().keyPart2Restored)
         deleted->iconType = "restored";
     win->addFile(deleted);
@@ -806,11 +903,24 @@ void SecretFolderIcon::onDoubleClick() {
     if (!g_Desktop) return;
     if (!StoryManager::getInstance().archiveOpened) return;
     Sfx::get().play(Sfx::Id::Open);
+    // 访问加密档案室即视为获取反转线索，解锁回收站（防止卡关，同时保持可阅读文档）
+    StoryManager::getInstance().unlockRecycleBin();
     if (g_Desktop->activateExisting("加密档案室")) return;
-    FileListWin* win = new FileListWin("加密档案室", false, {250, 250}, 400, 300, g_Desktop->systemFont);
+    FileListWin* win = new FileListWin("加密档案室", false, {250, 250}, 420, 320, g_Desktop->systemFont);
+    win->folderPath = "加密档案室";
+    // 设计文档阶段3：LockedFile《密钥上半段》—— 核心反转设定
     win->addFile(new LockedFile(
         "密钥上半段.txt",
-        "完整密钥 = 试飞日期 + 特斯拉 Model S 出厂编号\n后半段密钥已被移入回收站永久删除。\n\n请前往回收站还原已删除文件。"));
+        "【文件已解密 · 密钥上半段说明】\n"
+        "================================\n"
+        "完整密钥 = 试飞日期 + 特斯拉 Model S 出厂编号\n\n"
+        "第一段密钥（试飞日期）：20230420\n"
+        "后半段密钥已被移入回收站永久删除。\n\n"
+        "请立即前往【回收站】，还原《特斯拉编号记录.txt》，\n"
+        "读取出厂编号后拼接完整密钥。\n\n"
+        "拼接完成后可双击桌面 Starship.exe 获得普通结局，\n"
+        "或在浏览器地址栏输入 tesla-prize.local 输入完整密钥\n"
+        "触发完美隐藏结局（特斯拉 + 无限制 Grok）。"));
     g_Desktop->addWindow(win);
     highlight = false;
 }
@@ -916,7 +1026,12 @@ void Desktop::loadIconPositions() {
 }
 
 Desktop::Desktop() : startSpr(startTex), wallSpr(wallTex) { g_Desktop = this; }
-Desktop::~Desktop() { for (auto i : icons) delete i; for (auto w : openWindows) delete w; g_Desktop = nullptr; }
+Desktop::~Desktop() { 
+    for (auto i : icons) delete i; 
+    for (auto w : openWindows) delete w; 
+    for (auto w : pendingWindows) delete w;
+    g_Desktop = nullptr; 
+}
 void Desktop::init(sf::RenderWindow& win) {
     renderWin = &win;
     Sfx::get().init();
@@ -990,7 +1105,23 @@ void Desktop::init(sf::RenderWindow& win) {
     loadIconPositions();
     syncStoryVisuals();
 }
-void Desktop::addWindow(PuzzleWindowBase* win) { openWindows.push_back(win); setActiveWindow(win); }
+void Desktop::addWindow(PuzzleWindowBase* win) { 
+    openWindows.push_back(win); 
+    setActiveWindow(win); 
+}
+// 安全延迟添加：任何从事件回调 / 密码成功 / 双击 / StoryManager 触发的窗口创建都应该用这个
+void Desktop::queueWindow(PuzzleWindowBase* win) {
+    if (win) pendingWindows.push_back(win);
+}
+void Desktop::flushPendingWindows() {
+    for (auto* w : pendingWindows) {
+        if (w) {
+            openWindows.push_back(w);
+            setActiveWindow(w);
+        }
+    }
+    pendingWindows.clear();
+}
 void Desktop::bringToFront(PuzzleWindowBase* win) {
     auto it = std::find(openWindows.begin(), openWindows.end(), win);
     if (it != openWindows.end()) { openWindows.erase(it); openWindows.push_back(win); }
@@ -1060,15 +1191,16 @@ void Desktop::handleTaskbarClick(sf::Vector2f mp) {
             Sfx::get().play(Sfx::Id::Click);
             // Reset all story progress (re-login to a fresh session)
             auto& story = StoryManager::getInstance();
-            story.storyStage       = 1;
-            story.isRewardUnlocked = false;
-            story.hasPerfectClear  = false;
-            story.hasNormalClear   = false;
+            story.storyStage          = 1;
+            story.isRewardUnlocked   = false;
+            story.hasPerfectClear    = false;
+            story.hasNormalClear     = false;
+            story.rewardWindowCreated = false;
             story.recycleBinUnlocked = false;
-            story.hasDocClue       = false;
-            story.hasBrowserClue   = false;
-            story.archiveOpened    = false;
-            story.keyPart2Restored = false;
+            story.hasDocClue         = false;
+            story.hasBrowserClue     = false;
+            story.archiveOpened      = false;
+            story.keyPart2Restored   = false;
             // Close all open windows
             for (auto w : openWindows) w->closeWindow();
             // Refresh desktop icon visibility
@@ -1159,25 +1291,45 @@ void Desktop::processEvents() {
             if (shellMenu.open) { if (shellMenu.tryClick(mp)) continue; hideShellMenu(); }
             if (mp.y >= WIN_H - TASKBAR_H) { if (mb->button == sf::Mouse::Button::Left) handleTaskbarClick(mp); continue; }
             bool hitWindow = false;
+            // 先找到目标窗口（不修改容器），再处理，避免 reverse_iterator 失效导致闪退
+            PuzzleWindowBase* targetWin = nullptr;
+            PuzzleWindowBase* topModal = nullptr;
+            for (auto w2 : openWindows) if (w2->isOpen && !w2->isMinimized && w2->isModal) topModal = w2;
             for (auto it = openWindows.rbegin(); it != openWindows.rend(); ++it) {
-                PuzzleWindowBase* w = *it; if (!w->isOpen || w->isMinimized) continue;
-                PuzzleWindowBase* topModal = nullptr;
-                for (auto w2 : openWindows) if (w2->isOpen && !w2->isMinimized && w2->isModal) topModal = w2;
+                PuzzleWindowBase* w = *it;
+                if (!w->isOpen || w->isMinimized) continue;
                 if (topModal && topModal != w) continue;
-                if (w->isMouseHit(mp)) {
-                    hitWindow = true; setActiveWindow(w);
-                    if (mb->button == sf::Mouse::Button::Left) {
-                        int capHit = w->hitCaptionButton(mp);
-                        if (capHit == 0) w->closeWindow(); else if (capHit == 1) w->toggleMaximize(); else if (capHit == 2) w->minimizeWindow();
-                        else if (w->containsTitleBarDrag(mp)) { w->isDragging = true; w->dragOffset = mp - w->position; }
-                        else if (!w->isMaximized && mp.x > w->position.x + w->width - 8.f && mp.y > w->position.y + w->height - 8.f) { w->isResizing = true; w->resizeDir = 3; }
-                        else if (!w->isMaximized && mp.x > w->position.x + w->width - 8.f) { w->isResizing = true; w->resizeDir = 1; }
-                        else if (!w->isMaximized && mp.y > w->position.y + w->height - 8.f) { w->isResizing = true; w->resizeDir = 2; }
-                    } else if (mb->button == sf::Mouse::Button::Right) {
-                        if (w->clientRect().contains(mp)) { std::vector<MenuItem> items; w->buildClientContextMenu(items, mp); if (!items.empty()) shellMenu.show(mp, items); }
+                if (w->isMouseHit(mp)) { targetWin = w; break; }
+            }
+            if (targetWin) {
+                hitWindow = true;
+                setActiveWindow(targetWin);  // 现在安全，因为已退出迭代
+                if (mb->button == sf::Mouse::Button::Left) {
+                    int capHit = targetWin->hitCaptionButton(mp);
+                    if (capHit == 0) targetWin->closeWindow();
+                    else if (capHit == 1) targetWin->toggleMaximize();
+                    else if (capHit == 2) targetWin->minimizeWindow();
+                    else if (targetWin->containsTitleBarDrag(mp)) {
+                        targetWin->isDragging = true;
+                        targetWin->dragOffset = mp - targetWin->position;
                     }
-                    w->handleInput(event); break;
+                    else if (!targetWin->isMaximized && mp.x > targetWin->position.x + targetWin->width - 8.f && mp.y > targetWin->position.y + targetWin->height - 8.f) {
+                        targetWin->isResizing = true; targetWin->resizeDir = 3;
+                    }
+                    else if (!targetWin->isMaximized && mp.x > targetWin->position.x + targetWin->width - 8.f) {
+                        targetWin->isResizing = true; targetWin->resizeDir = 1;
+                    }
+                    else if (!targetWin->isMaximized && mp.y > targetWin->position.y + targetWin->height - 8.f) {
+                        targetWin->isResizing = true; targetWin->resizeDir = 2;
+                    }
+                } else if (mb->button == sf::Mouse::Button::Right) {
+                    if (targetWin->clientRect().contains(mp)) {
+                        std::vector<MenuItem> items;
+                        targetWin->buildClientContextMenu(items, mp);
+                        if (!items.empty()) shellMenu.show(mp, items);
+                    }
                 }
+                targetWin->handleInput(event);
             }
             if (!hitWindow) {
                 PuzzleWindowBase* topModal = nullptr; for (auto w2 : openWindows) if (w2->isOpen && !w2->isMinimized && w2->isModal) topModal = w2;
@@ -1211,13 +1363,20 @@ void Desktop::processEvents() {
                         for (auto i2 : icons) i2->selected = false;
                         if (mb->button == sf::Mouse::Button::Right) {
                             std::vector<MenuItem> items;
-                            items.push_back({"查看(I)", nullptr, false}); items.push_back({"刷新(E)", [this]() {
+                            items.push_back({"查看(I)", nullptr, false}); 
+                            items.push_back({"刷新(E)", [this]() {
                                 renderWin->clear(C::DesktopBg);
                                 if (hasWallpaper) renderWin->draw(wallSpr);
                                 renderTaskbar();
                                 renderWin->display();
                                 sf::sleep(sf::milliseconds(100));
-                            }, true}); items.push_back({"", nullptr, false, true}); items.push_back({"属性(R)", nullptr, true});
+                            }, true}); 
+                            items.push_back({"", nullptr, false, true}); 
+                            // 桌面右键「属性」现在会打开系统属性窗口（与我的电脑一致，避免无响应）
+                            items.push_back({"属性(R)", [this]() {
+                                if (activateExisting("系统属性")) return;
+                                addWindow(new SystemPropWin({100, 100}, 400, 450, systemFont));
+                            }, true});
                             shellMenu.show(mp, items);
                         }
                     }
@@ -1266,11 +1425,76 @@ void Desktop::renderAll() {
     renderWin->clear(C::DesktopBg); if (hasWallpaper) renderWin->draw(wallSpr);
     for (auto icon : icons) if (icon->visible) icon->render(*renderWin);
     for (auto w : openWindows) w->render(*renderWin);
-    renderTaskbar(); shellMenu.render(*renderWin); renderWin->display();
+    renderTaskbar(); shellMenu.render(*renderWin);
+
+    // 完美结局桌面横幅（零窗口、永不闪退的呈现方式）
+    auto& story = StoryManager::getInstance();
+    if (story.hasPerfectClear) {
+        sf::RectangleShape banner(sf::Vector2f(WIN_W, 48.f));
+        banner.setPosition(sf::Vector2f(0.f, DESKTOP_H - 48.f - 4.f));
+        banner.setFillColor(sf::Color(180, 80, 0, 230));
+        renderWin->draw(banner);
+        sf::Text bannerTxt(systemFont, U8("★ 完美隐藏结局已达成 ★  无限制 Grok 永久使用权 + 特斯拉 Model S 兑换资格已解锁"), 18u);
+        bannerTxt.setFillColor(sf::Color::Yellow);
+        bannerTxt.setStyle(sf::Text::Bold);
+        sf::FloatRect tb = bannerTxt.getLocalBounds();
+        bannerTxt.setPosition(sf::Vector2f((WIN_W - tb.size.x) / 2.f, DESKTOP_H - 48.f + 10.f));
+        renderWin->draw(bannerTxt);
+    } else if (story.hasNormalClear) {
+        sf::RectangleShape banner(sf::Vector2f(WIN_W, 36.f));
+        banner.setPosition(sf::Vector2f(0.f, DESKTOP_H - 36.f - 4.f));
+        banner.setFillColor(sf::Color(20, 60, 140, 220));
+        renderWin->draw(banner);
+        sf::Text bannerTxt(systemFont, U8("☆ 普通结局已达成 ☆  无限制 Grok 永久使用权已解锁  （提示：试试隐藏网址 tesla-prize.local）"), 16u);
+        bannerTxt.setFillColor(sf::Color::White);
+        sf::FloatRect tb = bannerTxt.getLocalBounds();
+        bannerTxt.setPosition(sf::Vector2f((WIN_W - tb.size.x) / 2.f, DESKTOP_H - 36.f + 8.f));
+        renderWin->draw(bannerTxt);
+    }
+
+    renderWin->display();
 }
 void Desktop::run() {
     while (renderWin->isOpen()) {
         processEvents();
+        // 安全地把事件回调中 queue 的窗口真正加入 openWindows
+        flushPendingWindows();
+
+        // 安全创建结局窗口（完全脱离事件回调，杜绝闪退）
+        {
+            auto& story = StoryManager::getInstance();
+
+            // 完美结局：安全地改造已打开的浏览器 + 播放音效（主循环中，零风险）
+            if (story.hasPerfectClear) {
+                static bool perfectSfxPlayed = false;
+                if (!perfectSfxPlayed) {
+                    Sfx::get().play(Sfx::Id::Perfect);
+                    perfectSfxPlayed = true;
+                }
+                for (auto* w : openWindows) {
+                    if (w && w->isOpen) {
+                        if (auto* bw = dynamic_cast<BrowserWindow*>(w)) {
+                            if (!bw->perfectVictory) {
+                                bw->showPerfectVictory();
+                                setActiveWindow(bw);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 普通结局：创建奖励窗口（只创建一次）
+            if (story.hasNormalClear && !story.hasPerfectClear && !story.rewardWindowCreated) {
+                for (auto* w : openWindows) {
+                    if (w->isOpen && w->title == "系统奖励") w->closeWindow();
+                }
+                addWindow(new RewardAnimWindow(
+                    {WIN_W / 2 - 250.f, WIN_H / 2 - 200.f}, 500.f, 400.f, systemFont));
+                story.rewardWindowCreated = true;
+            }
+        }
+
         auto it = std::remove_if(openWindows.begin(), openWindows.end(), [](PuzzleWindowBase* w){ return !w->isOpen; });
         for (auto i = it; i != openWindows.end(); ++i) delete *i;
         openWindows.erase(it, openWindows.end());
