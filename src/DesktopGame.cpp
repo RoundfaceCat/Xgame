@@ -1454,16 +1454,29 @@ void Desktop::processEvents() {
                         for (auto i2 : icons) i2->selected = false;
                         if (mb->button == sf::Mouse::Button::Right) {
                             std::vector<MenuItem> items;
-                            items.push_back({"查看(I)", nullptr, false}); 
+                            // 排列图标（禁用，仅展示）
+                            items.push_back({"排列图标(I)", nullptr, false});
+                            // 刷新
                             items.push_back({"刷新(E)", [this]() {
+                                syncStoryVisuals();
+                                for (auto i2 : icons) i2->selected = false;
                                 renderWin->clear(C::DesktopBg);
                                 if (hasWallpaper) renderWin->draw(wallSpr);
                                 renderTaskbar();
                                 renderWin->display();
-                                sf::sleep(sf::milliseconds(100));
-                            }, true}); 
-                            items.push_back({"", nullptr, false, true}); 
-                            // 桌面右键「属性」现在会打开系统属性窗口（与我的电脑一致，避免无响应）
+                                sf::sleep(sf::milliseconds(120));
+                            }, true});
+                            items.push_back({"", nullptr, false, true}); // separator
+                            // 新建文件夹（弹提示）
+                            items.push_back({"新建文件夹(F)", [this]() {
+                                Sfx::get().play(Sfx::Id::Error);
+                                addWindow(new MsgBoxWin(
+                                    "系统提示",
+                                    "操作失败：\n系统权限不足，无法在此位置创建新文件夹。",
+                                    {300, 250}, 320, 150, systemFont));
+                            }, true});
+                            items.push_back({"", nullptr, false, true}); // separator
+                            // 桌面右键「属性」现在会打开系统属性窗口
                             items.push_back({"属性(R)", [this]() {
                                 if (activateExisting("系统属性")) return;
                                 addWindow(new SystemPropWin({100, 100}, 400, 450, systemFont));
