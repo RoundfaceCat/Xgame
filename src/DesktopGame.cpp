@@ -82,6 +82,7 @@ void Sfx::init() {
     buffers[static_cast<std::size_t>(I::Notify)]  = makeBeep(1046.f, 0.10f, 0.32f);
     buffers[static_cast<std::size_t>(I::Ending)]  = makeChord({523.f, 659.f, 784.f}, 0.55f, 0.45f);
     buffers[static_cast<std::size_t>(I::Perfect)] = makeChord({523.f, 659.f, 784.f, 1046.f}, 0.85f, 0.48f);
+    buffers[static_cast<std::size_t>(I::Boot)]    = makeChord({261.6f, 329.6f, 392.f, 523.2f, 659.3f}, 3.8f, 0.52f);
     ready = true;
 }
 
@@ -327,6 +328,14 @@ void DeletedFile::open() {
 void ExeProgramFile::open() {
     StoryManager::getInstance().triggerNormalEnding();
 }
+void RestrictedDriveFile::open() {
+    if (!g_Desktop) return;
+    Sfx::get().play(Sfx::Id::Error);
+    std::string msg = "无法访问 本地磁盘 (" + driveLetter + ":)。\n\n拒绝访问。";
+    g_Desktop->addWindow(new MsgBoxWin(
+        "拒绝访问", msg,
+        {WIN_W/2.f - 160.f, WIN_H/2.f - 90.f}, 320, 180, g_Desktop->systemFont));
+}
 
 PuzzleWindowBase::PuzzleWindowBase(const std::string& t, sf::Vector2f p, float w, float h, const sf::Font& font)
     : UIComponent(p, w, h), title(t), uiFont(&font), titleText(font) {
@@ -479,53 +488,106 @@ float FileListWin::listTopY() const { return clientRect().position.y + 45.f; }
 void FileListWin::renderContent(sf::RenderWindow& win) {
     sf::FloatRect cr = clientRect();
     sf::RectangleShape addrBg(sf::Vector2f(cr.size.x, 35.f)); addrBg.setPosition(cr.position); addrBg.setFillColor(C::StatusBar); win.draw(addrBg);
-    sf::Text addrLbl(*winFont, U8("地址(D): " + folderPath), 12u); addrLbl.setFillColor(C::TextBlack); addrLbl.setPosition(sf::Vector2f(cr.position.x + 10.f, cr.position.y + 10.f)); win.draw(addrLbl);
+    sf::Text addrLbl(*winFont, U8("地址(D): " + folderPath), 13u); addrLbl.setFillColor(C::TextBlack); addrLbl.setPosition(sf::Vector2f(cr.position.x + 10.f, cr.position.y + 9.f)); win.draw(addrLbl);
     if (isRecycleBinMode) {
         restoreBtn.setSize(sf::Vector2f(120.f, 22.f)); restoreBtn.setPosition(sf::Vector2f(cr.position.x + cr.size.x - 130.f, cr.position.y + 6.f)); win.draw(restoreBtn); drawDoubleBevel(win, restoreBtn.getGlobalBounds(), true);
         restoreBtnText.setPosition(sf::Vector2f(restoreBtn.getPosition().x + 15.f, restoreBtn.getPosition().y + 3.f)); win.draw(restoreBtnText);
     }
     sf::FloatRect listRect(sf::Vector2f(cr.position.x, cr.position.y + 35.f), sf::Vector2f(cr.size.x, cr.size.y - 35.f));
     sf::RectangleShape listBg(listRect.size); listBg.setPosition(listRect.position); listBg.setFillColor(C::ClientWhite); win.draw(listBg); drawDoubleBevel(win, listRect, false);
-    
-    float sx = listRect.position.x + 20.f; float sy = listRect.position.y + 20.f;
+
+    // ── Special render for My Computer: show drives with storage bars ──
+    if (folderPath == "我的电脑") {
+        // Drive data: {name, used_gb, total_gb, label}
+        struct DriveInfo { std::string name; float used; float total; std::string label; };
+        DriveInfo drives[] = {
+            {"本地磁盘 (C:)", 18.6f, 40.0f, "系统盘"},
+            {"本地磁盘 (D:)", 42.3f, 120.0f, "数据盘"}
+        };
+        float dy = listRect.position.y + 20.f;
+        for (size_t di = 0; di < 2; ++di) {
+            float dx = listRect.position.x + 20.f;
+            // Selection highlight
+            if ((int)di == selectedIdx) {
+                sf::RectangleShape sel(sf::Vector2f(listRect.size.x - 30.f, 72.f));
+                sel.setPosition(sf::Vector2f(dx - 5.f, dy - 5.f));
+                sel.setFillColor(C::SelectIcon); win.draw(sel);
+            }
+            // Drive icon
+            sf::Sprite iconSpr(texComputer);
+            float sc = 48.f / std::max(texComputer.getSize().x, texComputer.getSize().y);
+            iconSpr.setScale(sf::Vector2f(sc, sc));
+            iconSpr.setPosition(sf::Vector2f(dx, dy + 8.f));
+            win.draw(iconSpr);
+            // Drive name
+            sf::Text nameTxt(*winFont, U8(drives[di].name), 14u);
+            nameTxt.setFillColor(C::TextBlack);
+            nameTxt.setPosition(sf::Vector2f(dx + 60.f, dy + 4.f));
+            win.draw(nameTxt);
+            // Storage bar background
+            float barW = std::min(280.f, listRect.size.x - 120.f);
+            sf::RectangleShape barBg(sf::Vector2f(barW, 16.f));
+            barBg.setPosition(sf::Vector2f(dx + 60.f, dy + 26.f));
+            barBg.setFillColor(sf::Color(200, 200, 200));
+            barBg.setOutlineColor(sf::Color(128,128,128)); barBg.setOutlineThickness(1.f);
+            win.draw(barBg);
+            // Storage bar fill (XP blue, turns red if > 90%)
+            float ratio = drives[di].used / drives[di].total;
+            sf::Color barColor = ratio > 0.9f ? sf::Color(200, 50, 50) : sf::Color(58, 110, 200);
+            sf::RectangleShape barFill(sf::Vector2f(barW * ratio, 16.f));
+            barFill.setPosition(barBg.getPosition());
+            barFill.setFillColor(barColor);
+            win.draw(barFill);
+            // Storage text: "xx.x GB 可用，共 xx.x GB"
+            float free_gb = drives[di].total - drives[di].used;
+            std::ostringstream ss;
+            ss.precision(1); ss << std::fixed;
+            ss << free_gb << " GB 可用，共 " << drives[di].total << " GB";
+            sf::Text storageTxt(*winFont, U8(ss.str()), 12u);
+            storageTxt.setFillColor(C::TextBlack);
+            storageTxt.setPosition(sf::Vector2f(dx + 60.f, dy + 46.f));
+            win.draw(storageTxt);
+            dy += 82.f;
+        }
+        return;
+    }
+
+    // ── Normal file list render ──
+    constexpr float ICON_DRAW_SIZE = 48.f;
+    constexpr float CELL_W = 120.f;
+    constexpr float CELL_H = 96.f;
+    float sx = listRect.position.x + 20.f; float sy = listRect.position.y + 16.f;
     for (size_t i = 0; i < files.size(); ++i) {
         if ((int)i == selectedIdx) {
-            sf::RectangleShape sel(sf::Vector2f(ICON_W + 20.f, ICON_W + 40.f)); sel.setPosition(sf::Vector2f(sx - 10.f, sy - 5.f)); sel.setFillColor(C::SelectIcon); win.draw(sel);
+            sf::RectangleShape sel(sf::Vector2f(CELL_W, CELL_H)); sel.setPosition(sf::Vector2f(sx - 8.f, sy - 4.f)); sel.setFillColor(C::SelectIcon); win.draw(sel);
         }
         const sf::Texture* currentTex = &texFile;
-        if (folderPath == "我的电脑" && files[i]->iconType == "locked") {
-            currentTex = &texComputer;
-        } else if (files[i]->iconType == "locked") {
+        if (files[i]->iconType == "locked") {
             currentTex = &texFolder;
         } else if (files[i]->iconType == "exe") {
             currentTex = &texExe;
         }
-        
         sf::Sprite iconSpr(*currentTex);
-        
-        float scale = 32.f / std::max(currentTex->getSize().x, currentTex->getSize().y);
+        float scale = ICON_DRAW_SIZE / std::max(currentTex->getSize().x, currentTex->getSize().y);
         iconSpr.setScale(sf::Vector2f(scale, scale));
-        iconSpr.setPosition(sf::Vector2f(sx + (ICON_W - iconSpr.getGlobalBounds().size.x)/2.f, sy));
-        
-        if (files[i]->iconType == "restored") {
-            iconSpr.setColor(sf::Color(255, 255, 255, 200));
-        }
+        iconSpr.setPosition(sf::Vector2f(sx + (CELL_W - 16.f - iconSpr.getGlobalBounds().size.x) / 2.f, sy));
+        if (files[i]->iconType == "restored") iconSpr.setColor(sf::Color(255, 255, 255, 200));
         win.draw(iconSpr);
 
         std::string displayName = files[i]->name;
         if (isRecycleBinMode && files[i]->iconType != "restored" &&
             !StoryManager::getInstance().keyPart2Restored)
             displayName = displayName + " (已删除)";
-        sf::Text fn(*winFont, U8(displayName), 12u);
-        
-        // BUGFIX: MUST position text BEFORE querying its bounds
-        fn.setPosition(sf::Vector2f(sx + ICON_W/2.f - fn.getLocalBounds().size.x/2.f, sy + 36.f));
-        
-        // Always draw text in black (no blue-bg highlight on name, like real XP)
+        sf::Text fn(*winFont, U8(displayName), 14u);
         fn.setFillColor(C::TextBlack);
+        fn.setPosition(sf::Vector2f(sx + (CELL_W - 16.f) / 2.f - fn.getLocalBounds().size.x / 2.f, sy + ICON_DRAW_SIZE + 4.f));
         win.draw(fn);
-        
-        sx += 100.f; if (sx + 100.f > cr.position.x + cr.size.x) { sx = listRect.position.x + 20.f; sy += 80.f; }
+
+        sx += CELL_W;
+        if (sx + CELL_W > listRect.position.x + listRect.size.x) {
+            sx = listRect.position.x + 20.f;
+            sy += CELL_H;
+        }
     }
 }
 void FileListWin::handleInput(const sf::Event& event) {
@@ -533,29 +595,51 @@ void FileListWin::handleInput(const sf::Event& event) {
         sf::Vector2f mp(mb->position.x, mb->position.y);
         if (isRecycleBinMode && restoreBtn.getGlobalBounds().contains(mp)) { restoreSelectedFile(); return; }
 
-        float sx = clientRect().position.x + 20.f;
-        float sy = listTopY() + 20.f;
+        sf::FloatRect listRect(sf::Vector2f(clientRect().position.x, clientRect().position.y + 35.f),
+                               sf::Vector2f(clientRect().size.x, clientRect().size.y - 35.f));
+
+        // My Computer: hit test drives by row
+        if (folderPath == "我的电脑") {
+            float dy = listRect.position.y + 20.f;
+            for (size_t i = 0; i < files.size(); ++i) {
+                sf::FloatRect hitBox(sf::Vector2f(listRect.position.x + 15.f, dy - 5.f),
+                                     sf::Vector2f(listRect.size.x - 25.f, 72.f));
+                if (hitBox.contains(mp)) {
+                    const bool isDouble = selectedIdx == static_cast<int>(i) &&
+                        listClickClock.getElapsedTime().asMilliseconds() < DOUBLE_CLICK_MS;
+                    selectedIdx = static_cast<int>(i);
+                    if (isDouble) openSelectedFile();
+                    else Sfx::get().play(Sfx::Id::Click);
+                    listClickClock.restart();
+                    return;
+                }
+                dy += 82.f;
+            }
+            selectedIdx = -1;
+            return;
+        }
+
+        // Normal file list
+        constexpr float CELL_W = 120.f;
+        constexpr float CELL_H = 96.f;
+        float sx = listRect.position.x + 20.f;
+        float sy = listRect.position.y + 16.f;
         for (size_t i = 0; i < files.size(); ++i) {
-            sf::FloatRect hitBox(sf::Vector2f(sx - 10.f, sy - 5.f), sf::Vector2f(ICON_W + 20.f, ICON_W + 40.f));
+            sf::FloatRect hitBox(sf::Vector2f(sx - 8.f, sy - 4.f), sf::Vector2f(CELL_W, CELL_H));
             if (hitBox.contains(mp)) {
-                // True double-click: second click on already-selected item within threshold
                 const bool isDouble =
                     selectedIdx == static_cast<int>(i) &&
                     listClickClock.getElapsedTime().asMilliseconds() < DOUBLE_CLICK_MS;
                 selectedIdx = static_cast<int>(i);
-                if (isDouble) {
-                    openSelectedFile();
-                } else {
-                    // Single click: play select sound
-                    Sfx::get().play(Sfx::Id::Click);
-                }
+                if (isDouble) openSelectedFile();
+                else Sfx::get().play(Sfx::Id::Click);
                 listClickClock.restart();
                 return;
             }
-            sx += 100.f;
-            if (sx + 100.f > clientRect().position.x + clientRect().size.x) {
-                sx = clientRect().position.x + 20.f;
-                sy += 80.f;
+            sx += CELL_W;
+            if (sx + CELL_W > listRect.position.x + listRect.size.x) {
+                sx = listRect.position.x + 20.f;
+                sy += CELL_H;
             }
         }
         selectedIdx = -1;
@@ -825,8 +909,8 @@ void MyComputerIcon::onDoubleClick() {
     if (g_Desktop->activateExisting("我的电脑")) return;
     FileListWin* win = new FileListWin("我的电脑", false, {50, 50}, 500, 400, g_Desktop->systemFont);
     win->folderPath = "我的电脑";
-    win->addFile(new TextFile("C盘", "本地磁盘 (访问受限)", "locked"));
-    win->addFile(new TextFile("D盘", "本地磁盘 (访问受限)", "locked"));
+    win->addFile(new RestrictedDriveFile("本地磁盘 (C:)", "C"));
+    win->addFile(new RestrictedDriveFile("本地磁盘 (D:)", "D"));
     g_Desktop->addWindow(win);
 }
 void MyComputerIcon::buildContextMenu(std::vector<MenuItem>& out) {
@@ -1071,6 +1155,13 @@ void Desktop::handleTaskbarClick(sf::Vector2f mp) {
             story.keyPart2Restored = false;
             // Close all open windows
             for (auto w : openWindows) w->closeWindow();
+            // Reset icon grid positions
+            usedSlots.clear();
+            for (auto icon : icons) {
+                icon->gridSlot = allocateSlot();
+                icon->position = slotPosition(icon->gridSlot);
+            }
+            saveIconPositions();
             // Refresh desktop icon visibility
             syncStoryVisuals();
         }, true});
@@ -1211,13 +1302,36 @@ void Desktop::processEvents() {
                         for (auto i2 : icons) i2->selected = false;
                         if (mb->button == sf::Mouse::Button::Right) {
                             std::vector<MenuItem> items;
-                            items.push_back({"查看(I)", nullptr, false}); items.push_back({"刷新(E)", [this]() {
+                            // 排列图标（禁用，仅展示）
+                            items.push_back({"排列图标(I)", nullptr, false});
+                            // 刷新（有效）
+                            items.push_back({"刷新(E)", [this]() {
+                                syncStoryVisuals();
+                                for (auto i2 : icons) i2->selected = false;
                                 renderWin->clear(C::DesktopBg);
                                 if (hasWallpaper) renderWin->draw(wallSpr);
                                 renderTaskbar();
                                 renderWin->display();
-                                sf::sleep(sf::milliseconds(100));
-                            }, true}); items.push_back({"", nullptr, false, true}); items.push_back({"属性(R)", nullptr, true});
+                                sf::sleep(sf::milliseconds(120));
+                            }, true});
+                            items.push_back({"", nullptr, false, true}); // separator
+                            // 新建文件夹（弹提示）
+                            items.push_back({"新建文件夹(F)", [this]() {
+                                Sfx::get().play(Sfx::Id::Error);
+                                addWindow(new MsgBoxWin(
+                                    "系统提示",
+                                    "操作失败：\n系统权限不足，无法在此位置创建新文件夹。",
+                                    {300, 250}, 320, 150, systemFont));
+                            }, true});
+                            items.push_back({"", nullptr, false, true}); // separator
+                            // 个性化 → 显示属性
+                            items.push_back({"个性化(R)", [this]() {
+                                if (!activateExisting("显示 属性"))
+                                    addWindow(new MsgBoxWin(
+                                        "显示 属性",
+                                        "主题：Windows XP（经典）\n分辨率：1280 x 800\n色彩：32 位\n\n此工作站的显示设置已被锁定。",
+                                        {280, 200}, 320, 200, systemFont));
+                            }, true});
                             shellMenu.show(mp, items);
                         }
                     }
@@ -1269,6 +1383,118 @@ void Desktop::renderAll() {
     renderTaskbar(); shellMenu.render(*renderWin); renderWin->display();
 }
 void Desktop::run() {
+    // ═══════════════════════════════════════════════════════════════
+    // WinXP-style boot animation
+    // Phase 0: black  (0.4s)
+    // Phase 1: logo   (1.6s) – "Microsoft Windows XP" + "Professional"
+    // Phase 2: bar    (2.5s) – smooth buffering progress bar
+    // Phase 3: fade   (0.6s) – fade to desktop colour
+    // ═══════════════════════════════════════════════════════════════
+
+    sf::Texture bootBgTex;
+    sf::Sprite bootBgSpr(bootBgTex);
+    bool hasBootBg = false;
+    if (bootBgTex.loadFromFile("assets/boot_bg.jpg")) {
+        bootBgTex.setSmooth(true);
+        bootBgSpr.setTexture(bootBgTex, true);
+        float scaleX = WIN_W / bootBgTex.getSize().x;
+        float scaleY = WIN_H / bootBgTex.getSize().y;
+        float maxScale = std::max(scaleX, scaleY);
+        bootBgSpr.setScale(sf::Vector2f(maxScale, maxScale));
+        hasBootBg = true;
+    }
+
+    sf::Clock bootClock;
+    constexpr float phase1Start = 0.4f;
+    constexpr float phase2Start = 2.0f;
+    constexpr float phase3Start = 4.5f;
+    constexpr float phase3End   = 5.1f;
+
+    bool soundStarted = false;
+
+    while (renderWin->isOpen()) {
+        while (std::optional<sf::Event> ev = renderWin->pollEvent())
+            if (ev->is<sf::Event::Closed>()) { renderWin->close(); return; }
+
+        float t = bootClock.getElapsedTime().asSeconds();
+        if (t >= phase3End) break;
+
+        renderWin->clear(sf::Color::Black);
+        
+        // Only draw the background starting from phase 1, so phase 0 remains a true black screen
+        if (t >= phase1Start && hasBootBg) {
+            renderWin->draw(bootBgSpr);
+        }
+
+        if (t >= phase1Start) {
+            if (!soundStarted) {
+                Sfx::get().play(Sfx::Id::Boot);
+                soundStarted = true;
+            }
+
+            sf::Text titleTxt(systemFont, U8("Microsoft Windows XP"), 36u);
+            titleTxt.setFillColor(sf::Color::White);
+            titleTxt.setStyle(sf::Text::Bold);
+            float tw = titleTxt.getLocalBounds().size.x;
+            titleTxt.setPosition(sf::Vector2f((WIN_W - tw) / 2.f, WIN_H / 2.f - 70.f));
+            renderWin->draw(titleTxt);
+
+            sf::Text sub(systemFont, U8("Professional"), 22u);
+            sub.setFillColor(sf::Color(170, 200, 255));
+            float sw = sub.getLocalBounds().size.x;
+            sub.setPosition(sf::Vector2f((WIN_W - sw) / 2.f, WIN_H / 2.f - 24.f));
+            renderWin->draw(sub);
+
+            sf::RectangleShape sep(sf::Vector2f(320.f, 1.f));
+            sep.setFillColor(sf::Color(100, 140, 220, 180));
+            sep.setPosition(sf::Vector2f((WIN_W - 320.f) / 2.f, WIN_H / 2.f + 10.f));
+            renderWin->draw(sep);
+        }
+
+        if (t >= phase2Start && t < phase3Start) {
+            constexpr float barW = 220.f, barH = 14.f;
+            float barX = (WIN_W - barW) / 2.f;
+            float barY = WIN_H * 0.72f;
+
+            sf::RectangleShape track(sf::Vector2f(barW, barH));
+            track.setPosition(sf::Vector2f(barX, barY));
+            track.setFillColor(sf::Color(10, 10, 40, 180));
+            track.setOutlineColor(sf::Color(60, 90, 160));
+            track.setOutlineThickness(1.f);
+            renderWin->draw(track);
+
+            // Smooth buffering style progress bar
+            float ratio = (t - phase2Start) / (phase3Start - phase2Start);
+            if (ratio < 0.f) ratio = 0.f;
+            if (ratio > 1.f) ratio = 1.f;
+            
+            // Apply a slight easing to make it feel more "real"
+            float easeRatio = 1.f - std::pow(1.f - ratio, 3.f);
+
+            sf::RectangleShape fill(sf::Vector2f(barW * easeRatio, barH));
+            fill.setPosition(sf::Vector2f(barX, barY));
+            fill.setFillColor(sf::Color(58, 110, 220));
+            renderWin->draw(fill);
+
+            sf::Text copy(systemFont, U8("Copyright \u00a9 2001-2008 Microsoft Corporation."), 11u);
+            copy.setFillColor(sf::Color(160, 160, 160));
+            copy.setPosition(sf::Vector2f((WIN_W - copy.getLocalBounds().size.x) / 2.f, barY + barH + 14.f));
+            renderWin->draw(copy);
+        }
+
+        if (t >= phase3Start) {
+            float alpha = (t - phase3Start) / (phase3End - phase3Start);
+            if (alpha > 1.f) alpha = 1.f;
+            uint8_t a = static_cast<uint8_t>(alpha * 255.f);
+            sf::RectangleShape overlay(sf::Vector2f(WIN_W, WIN_H));
+            overlay.setFillColor(sf::Color(C::DesktopBg.r, C::DesktopBg.g, C::DesktopBg.b, a));
+            renderWin->draw(overlay);
+        }
+
+        renderWin->display();
+    }
+
+    // ── Main game loop ──
     while (renderWin->isOpen()) {
         processEvents();
         auto it = std::remove_if(openWindows.begin(), openWindows.end(), [](PuzzleWindowBase* w){ return !w->isOpen; });

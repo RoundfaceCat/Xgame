@@ -17,9 +17,9 @@ constexpr float WIN_W            = 1280.f;
 constexpr float WIN_H            = 800.f;
 constexpr float TASKBAR_H        = 40.f;
 constexpr float DESKTOP_H        = WIN_H - TASKBAR_H;
-constexpr float ICON_W           = 84.f;
-constexpr float ICON_H           = 84.f;
-constexpr float ICON_CELL_H      = 104.f;
+constexpr float ICON_W           = 80.f;
+constexpr float ICON_H           = 80.f;
+constexpr float ICON_CELL_H      = 100.f;
 constexpr float GRID_COL_W       = 100.f;   // grid cell width
 constexpr float GRID_ROW_H       = 100.f;   // grid cell height
 constexpr float GRID_MARGIN_X    = 10.f;    // left margin
@@ -76,6 +76,7 @@ public:
         Notify,      // clue / stage advance
         Ending,      // normal clear
         Perfect,     // perfect clear
+        Boot,        // Windows XP startup chord
         Count
     };
 
@@ -231,6 +232,13 @@ public:
 class ExeProgramFile : public FileObject {
 public:
     ExeProgramFile(const std::string& n) : FileObject(n, "exe") {}
+    void open() override;
+};
+
+class RestrictedDriveFile : public FileObject {
+public:
+    std::string driveLetter;
+    RestrictedDriveFile(const std::string& n, const std::string& dl) : FileObject(n, "locked"), driveLetter(dl) {}
     void open() override;
 };
 
