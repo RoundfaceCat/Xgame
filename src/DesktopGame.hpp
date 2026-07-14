@@ -121,14 +121,15 @@ public:
     std::string keyPart1           = "20230420";
     std::string keyPart2           = "2012";
     std::string fullKey            = "202304202012";
-    bool        isRewardUnlocked   = false;
-    bool        hasPerfectClear    = false;
-    bool        hasNormalClear     = false;
-    bool        recycleBinUnlocked = false; // 加密档案室解锁标志
-    bool        hasDocClue         = false;
-    bool        hasBrowserClue     = false;
-    bool        archiveOpened      = false;
-    bool        keyPart2Restored   = false;
+    bool        isRewardUnlocked    = false;
+    bool        hasPerfectClear     = false;
+    bool        hasNormalClear      = false;
+    bool        rewardWindowCreated = false; // 防止重复创建结局窗口
+    bool        recycleBinUnlocked  = false; // 加密档案室解锁标志
+    bool        hasDocClue          = false;
+    bool        hasBrowserClue      = false;
+    bool        archiveOpened       = false;
+    bool        keyPart2Restored    = false;
 
     bool tryUnlockArchive(const std::string& input);
     bool tryPerfectKey(const std::string& input);
@@ -307,6 +308,7 @@ public:
     sf::RectangleShape addrBar;
     sf::RectangleShape goBtn;
     bool               showSecretPage = false;
+    bool               perfectVictory = false;  // 隐藏结局成功后浏览器变成通关页
     bool               editingAddr    = false;
     const sf::Font*    winFont = nullptr;
     sf::Clock          blinkClock;
@@ -315,6 +317,7 @@ public:
     void renderContent(sf::RenderWindow& win) override;
     void handleInput(const sf::Event& event) override;
     void navigateToAddress();
+    void showPerfectVictory();  // 强制切换为完美结局页面
 };
 
 class FileListWin : public PuzzleWindowBase {
@@ -479,6 +482,8 @@ public:
     // Global App Icon (for window titlebars and taskbar)
     sf::Texture       appIconTex;
     std::vector<PuzzleWindowBase*>  openWindows;
+    // 延迟添加的窗口队列（防止在 processEvents 迭代/回调中直接 push_back 导致闪退）
+    std::vector<PuzzleWindowBase*>  pendingWindows;
 
     sf::RenderWindow* renderWin = nullptr;
     sf::Font          systemFont;
@@ -520,6 +525,9 @@ public:
     void run();
 
     void addWindow(PuzzleWindowBase* win);
+    // 安全的延迟添加（推荐在事件回调、onDoubleClick、密码成功等路径使用）
+    void queueWindow(PuzzleWindowBase* win);
+    void flushPendingWindows();
     void bringToFront(PuzzleWindowBase* win);
     void setActiveWindow(PuzzleWindowBase* win);
     PuzzleWindowBase* topWindow() const;
