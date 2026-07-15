@@ -25,7 +25,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-可执行文件：`build\bin\main.exe`  
+可执行文件：`build\bin\StarshipWorkstation.exe`
 请在 `build\bin` 目录运行（或确保能访问同目录下的 `assets/`）。
 
 ## 常见错误：FetchContent SFML failed

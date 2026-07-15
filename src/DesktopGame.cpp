@@ -334,6 +334,13 @@ void TextFile::open() {
     if (g_Desktop->activateExisting(name)) return;
     g_Desktop->addWindow(new NotepadWindow(name, content, {100, 100}, 520, 420, g_Desktop->systemFont));
 }
+void ImageFile::open() {
+    if (!g_Desktop) return;
+    if (g_Desktop->activateExisting(name)) return;
+    Sfx::get().play(Sfx::Id::Open);
+    g_Desktop->addWindow(new ImageViewerWindow(
+        name, imagePath, caption, {280, 70}, 720, 620, g_Desktop->systemFont));
+}
 void LockedFile::open() {
     if (!g_Desktop) return;
     auto& story = StoryManager::getInstance();
@@ -435,6 +442,58 @@ void NotepadWindow::renderContent(sf::RenderWindow& win) {
     docText.setPosition(sf::Vector2f(cr.position.x + 5.f, cr.position.y + 5.f)); win.draw(docText);
 }
 void NotepadWindow::handleInput(const sf::Event& event) {}
+
+ImageViewerWindow::ImageViewerWindow(const std::string& fileTitle, const std::string& path,
+                                     const std::string& imageCaption, sf::Vector2f p,
+                                     float w, float h, const sf::Font& font)
+    : PuzzleWindowBase(fileTitle + " - 图片查看器", p, w, h, font),
+      imageSpr(imageTex), captionText(font), imagePath(path), caption(imageCaption) {
+    imageLoaded = imageTex.loadFromFile(imagePath);
+    if (imageLoaded) {
+        imageTex.setSmooth(true);
+        // Sprite 在空纹理阶段创建时纹理矩形为 0×0；加载后必须刷新矩形。
+        imageSpr.setTexture(imageTex, true);
+    }
+    captionText.setCharacterSize(13);
+    captionText.setFillColor(C::TextWhite);
+    captionText.setString(U8(caption));
+    canMaximize = true;
+    canMinimize = true;
+}
+void ImageViewerWindow::renderContent(sf::RenderWindow& win) {
+    const sf::FloatRect cr = clientRect();
+    sf::RectangleShape bg(cr.size);
+    bg.setPosition(cr.position);
+    bg.setFillColor(sf::Color(18, 18, 18));
+    win.draw(bg);
+    drawDoubleBevel(win, cr, false);
+
+    const float captionH = caption.empty() ? 0.f : 36.f;
+    if (imageLoaded && imageTex.getSize().x > 0 && imageTex.getSize().y > 0) {
+        const float availableW = std::max(1.f, cr.size.x - 20.f);
+        const float availableH = std::max(1.f, cr.size.y - captionH - 20.f);
+        const float scale = std::min(
+            availableW / static_cast<float>(imageTex.getSize().x),
+            availableH / static_cast<float>(imageTex.getSize().y));
+        imageSpr.setScale(sf::Vector2f(scale, scale));
+        const sf::FloatRect imageBounds = imageSpr.getGlobalBounds();
+        imageSpr.setPosition(sf::Vector2f(
+            cr.position.x + (cr.size.x - imageBounds.size.x) / 2.f,
+            cr.position.y + 10.f + (availableH - imageBounds.size.y) / 2.f));
+        win.draw(imageSpr);
+    } else {
+        sf::Text errorText(*uiFont, U8("图片加载失败：" + imagePath), 14u);
+        errorText.setFillColor(sf::Color(240, 100, 100));
+        errorText.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + 20.f));
+        win.draw(errorText);
+    }
+
+    if (!caption.empty()) {
+        captionText.setPosition(sf::Vector2f(cr.position.x + 12.f, cr.position.y + cr.size.y - 28.f));
+        win.draw(captionText);
+    }
+}
+void ImageViewerWindow::handleInput(const sf::Event& event) {}
 
 BrowserWindow::BrowserWindow(sf::Vector2f p, float w, float h, const sf::Font& font) : PuzzleWindowBase("Windows Internet Explorer", p, w, h, font), winFont(&font), addrText(font), contentText(font), statusText(font) {
     addressInput = "http://www.spacex.com/history";
@@ -560,6 +619,7 @@ FileListWin::FileListWin(const std::string& winTitle, bool recycleBin, sf::Vecto
     texFile.loadFromFile("assets/notepad.png"); texFile.setSmooth(true);
     texExe.loadFromFile("assets/start_exe.png"); texExe.setSmooth(true);
     texComputer.loadFromFile("assets/computer.png"); texComputer.setSmooth(true);
+    (void)texImage.loadFromFile("assets/starship_blueprint.jpg"); texImage.setSmooth(true);
 }
 FileListWin::~FileListWin() { for (auto f : files) delete f; files.clear(); }
 void FileListWin::addFile(FileObject* file) { files.push_back(file); }
@@ -639,6 +699,8 @@ void FileListWin::renderContent(sf::RenderWindow& win) {
             currentTex = &texFolder;
         } else if (files[i]->iconType == "exe") {
             currentTex = &texExe;
+        } else if (files[i]->iconType == "image" && texImage.getSize().x > 0) {
+            currentTex = &texImage;
         }
         sf::Sprite iconSpr(*currentTex);
         float scale = ICON_DRAW_SIZE / std::max(currentTex->getSize().x, currentTex->getSize().y);
@@ -825,31 +887,29 @@ void PasswordDialog::handleInput(const sf::Event& event) {
     if (const auto* mb = event.getIf<sf::Event::MouseButtonPressed>(); mb && mb->button == sf::Mouse::Button::Left) {
         sf::Vector2f mp(mb->position.x, mb->position.y);
         if (hasError) { hasError = false; typedPassword = ""; }
-        if (okBtn.getGlobalBounds().contains(mp)) submitPassword();
-        if (cancelBtn.getGlobalBounds().contains(mp)) closeWindow();
+        if (okBtn.getGlobalBounds().contains(mp)) { submitPassword(); return; }
+        if (cancelBtn.getGlobalBounds().contains(mp)) { closeWindow(); return; }
     }
     if (event.is<sf::Event::TextEntered>()) {
         if (hasError) { hasError = false; typedPassword = ""; }
         if (event.getIf<sf::Event::TextEntered>()->unicode == 8 && !typedPassword.empty()) typedPassword.pop_back();
         else if (event.getIf<sf::Event::TextEntered>()->unicode >= 32 && event.getIf<sf::Event::TextEntered>()->unicode < 128 && typedPassword.size() < 20) typedPassword += static_cast<char>(event.getIf<sf::Event::TextEntered>()->unicode);
     }
-    if (event.is<sf::Event::KeyPressed>() && event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Enter) submitPassword();
+    if (event.is<sf::Event::KeyPressed>() && event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Enter) { submitPassword(); return; }
 }
 void PasswordDialog::submitPassword() {
     if (mode == 0) {
         if (StoryManager::getInstance().tryUnlockArchive(typedPassword)) {
             Sfx::get().play(Sfx::Id::Ok);
-            closeWindow();  // 只关闭，桌面图标变化作为反馈
+            closeWindow();
         } else {
             hasError = true;
             Sfx::get().play(Sfx::Id::Error);
         }
     } else {
-        // 隐藏结局：成功后只关闭密码框 + 触发浏览器变通关页（零新窗口，最稳）
         if (StoryManager::getInstance().tryPerfectKey(typedPassword)) {
             Sfx::get().play(Sfx::Id::Ok);
             closeWindow();
-            // triggerPerfectEnding 已在 tryPerfectKey 里调用，会改造浏览器
         } else {
             hasError = true;
             Sfx::get().play(Sfx::Id::Error);
@@ -894,12 +954,22 @@ void SystemPropWin::handleInput(const sf::Event& event) {
     }
 }
 
-RewardAnimWindow::RewardAnimWindow(sf::Vector2f p, float w, float h, const sf::Font& font) : PuzzleWindowBase("系统奖励", p, w, h, font), congratsText(font) {
+RewardAnimWindow::RewardAnimWindow(sf::Vector2f p, float w, float h, const sf::Font& font)
+    : PuzzleWindowBase("系统奖励", p, w, h, font), congratsText(font), rewardSpr(rewardTex) {
     congratsText.setFont(font); congratsText.setCharacterSize(16); congratsText.setFillColor(C::TextBlack); congratsText.setStyle(sf::Text::Bold);
-    if (StoryManager::getInstance().hasPerfectClear) {
+    const bool perfect = StoryManager::getInstance().hasPerfectClear;
+    const std::string rewardPath = perfect
+        ? "assets/tesla_grok_reward.jpg"
+        : "assets/elon_thumbs_up.jpg";
+    hasRewardImage = rewardTex.loadFromFile(rewardPath);
+    if (hasRewardImage) {
+        rewardTex.setSmooth(true);
+        // 与图片查看器相同，确保 Sprite 使用加载后的完整纹理尺寸。
+        rewardSpr.setTexture(rewardTex, true);
+    }
+    if (perfect) {
         congratsText.setString(U8(
-            "★ 完美隐藏结局 ★\n"
-            "================================\n"
+            "★ 完美隐藏结局 ★\n\n"
             "密码校验成功！\n\n"
             "已解锁：无限制 Grok 永久使用权\n"
             "已解锁：特斯拉 Model S 免费兑换资格\n\n"
@@ -908,8 +978,7 @@ RewardAnimWindow::RewardAnimWindow(sf::Vector2f p, float w, float h, const sf::F
             "感谢游玩《尘封的星舰工作站》"));
     } else {
         congratsText.setString(U8(
-            "☆ 普通结局 ☆\n"
-            "================================\n"
+            "☆ 普通结局 ☆\n\n"
             "基础剧情通关成功！\n\n"
             "已解锁：无限制 Grok 永久使用权\n\n"
             "（提示：似乎还有隐藏页面未探索……\n"
@@ -918,10 +987,83 @@ RewardAnimWindow::RewardAnimWindow(sf::Vector2f p, float w, float h, const sf::F
     }
 }
 void RewardAnimWindow::renderContent(sf::RenderWindow& win) {
-    sf::FloatRect cr = clientRect(); sf::RectangleShape bg(cr.size); bg.setPosition(cr.position); bg.setFillColor(C::ClientWhite); win.draw(bg); drawDoubleBevel(win, cr, false);
-    if ((int)(animationClock.getElapsedTime().asSeconds() * 2) % 2 == 0) congratsText.setFillColor(StoryManager::getInstance().hasPerfectClear ? sf::Color(200, 100, 0) : sf::Color::Blue);
-    else congratsText.setFillColor(C::TextBlack);
-    congratsText.setPosition(sf::Vector2f(cr.position.x + 20.f, cr.position.y + 50.f)); win.draw(congratsText);
+    const sf::FloatRect cr = clientRect();
+    const bool perfect = StoryManager::getInstance().hasPerfectClear;
+    const bool blink = (int)(animationClock.getElapsedTime().asSeconds() * 2) % 2 == 0;
+    constexpr float margin = 14.f;
+    constexpr float gap = 16.f;
+    const float imagePanelW = std::min(440.f, cr.size.x * 0.56f);
+    const sf::FloatRect imagePanel(
+        sf::Vector2f(cr.position.x + margin, cr.position.y + margin),
+        sf::Vector2f(imagePanelW, cr.size.y - margin * 2.f));
+    const sf::FloatRect infoPanel(
+        sf::Vector2f(imagePanel.position.x + imagePanel.size.x + gap, imagePanel.position.y),
+        sf::Vector2f(cr.size.x - margin * 2.f - gap - imagePanel.size.x, imagePanel.size.y));
+
+    sf::RectangleShape bg(cr.size);
+    bg.setPosition(cr.position);
+    bg.setFillColor(perfect ? sf::Color(225, 216, 190) : sf::Color(210, 225, 242));
+    win.draw(bg);
+    drawDoubleBevel(win, cr, false);
+
+    // 左侧只负责完整展示奖励图片，不再把图片当作文字背景。
+    teslaFrame.setPosition(imagePanel.position);
+    teslaFrame.setSize(imagePanel.size);
+    teslaFrame.setFillColor(sf::Color(18, 22, 30));
+    teslaFrame.setOutlineColor(perfect ? sf::Color(210, 165, 40) : sf::Color(70, 120, 190));
+    teslaFrame.setOutlineThickness(2.f);
+    win.draw(teslaFrame);
+    drawDoubleBevel(win, imagePanel, false);
+
+    if (hasRewardImage && rewardTex.getSize().x > 0 && rewardTex.getSize().y > 0) {
+        constexpr float imagePadding = 10.f;
+        constexpr float captionH = 30.f;
+        const float availableW = imagePanel.size.x - imagePadding * 2.f;
+        const float availableH = imagePanel.size.y - imagePadding * 2.f - captionH;
+        const float scale = std::min(
+            availableW / static_cast<float>(rewardTex.getSize().x),
+            availableH / static_cast<float>(rewardTex.getSize().y));
+        rewardSpr.setScale(sf::Vector2f(scale, scale));
+        const sf::FloatRect imageBounds = rewardSpr.getGlobalBounds();
+        rewardSpr.setPosition(sf::Vector2f(
+            imagePanel.position.x + (imagePanel.size.x - imageBounds.size.x) / 2.f,
+            imagePanel.position.y + imagePadding + (availableH - imageBounds.size.y) / 2.f));
+        win.draw(rewardSpr);
+    } else {
+        sf::Text missing(*uiFont, U8("奖励图片加载失败"), 14u);
+        missing.setFillColor(sf::Color(240, 120, 120));
+        missing.setPosition(sf::Vector2f(imagePanel.position.x + 20.f, imagePanel.position.y + 20.f));
+        win.draw(missing);
+    }
+
+    sf::Text imageCaption(*uiFont,
+        U8(perfect ? "TESLA × GROK · PREMIUM REWARD" : "ELON MUSK · SPACEX AUTHORIZED"), 12u);
+    imageCaption.setFillColor(perfect ? sf::Color(255, 215, 90) : sf::Color(170, 210, 255));
+    imageCaption.setStyle(sf::Text::Bold);
+    const sf::FloatRect captionBounds = imageCaption.getLocalBounds();
+    imageCaption.setPosition(sf::Vector2f(
+        imagePanel.position.x + (imagePanel.size.x - captionBounds.size.x) / 2.f,
+        imagePanel.position.y + imagePanel.size.y - 25.f));
+    win.draw(imageCaption);
+
+    // 右侧是独立的信息卡，保证文字始终清晰可读。
+    sf::RectangleShape infoBg(infoPanel.size);
+    infoBg.setPosition(infoPanel.position);
+    infoBg.setFillColor(perfect ? sf::Color(255, 250, 225) : sf::Color(245, 250, 255));
+    win.draw(infoBg);
+    drawDoubleBevel(win, infoPanel, true);
+
+    sf::RectangleShape divider(sf::Vector2f(infoPanel.size.x - 36.f, 1.f));
+    divider.setPosition(sf::Vector2f(infoPanel.position.x + 18.f, infoPanel.position.y + 58.f));
+    divider.setFillColor(perfect ? sf::Color(190, 145, 45) : sf::Color(80, 125, 185));
+    win.draw(divider);
+
+    congratsText.setCharacterSize(15);
+    congratsText.setFillColor(perfect
+        ? (blink ? sf::Color(160, 95, 0) : sf::Color(95, 55, 0))
+        : (blink ? sf::Color(15, 70, 160) : sf::Color(20, 40, 80)));
+    congratsText.setPosition(sf::Vector2f(infoPanel.position.x + 18.f, infoPanel.position.y + 28.f));
+    win.draw(congratsText);
 }
 void RewardAnimWindow::handleInput(const sf::Event& event) {}
 
@@ -1102,6 +1244,10 @@ void SecretFolderIcon::onDoubleClick() {
         "拼接完成后可双击桌面 Starship.exe 获得普通结局，\n"
         "或在浏览器地址栏输入 tesla-prize.local 输入完整密钥\n"
         "触发完美隐藏结局（特斯拉 + 无限制 Grok）。"));
+    win->addFile(new ImageFile(
+        "星舰初代设计蓝图.jpg",
+        "assets/starship_blueprint.jpg",
+        "SpaceX Engineering · Starship SVS-R3 · STRICTLY CONFIDENTIAL"));
     g_Desktop->addWindow(win);
     highlight = false;
 }
@@ -1145,7 +1291,14 @@ sf::Vector2f Desktop::slotPosition(int slot) const {
 
 int Desktop::allocateSlot() {
     for (int s = 0; ; ++s) {
-        if (usedSlots.find(s) == usedSlots.end()) {
+        bool occupied = false;
+        for (auto* icon : icons) {
+            if (icon && icon->gridSlot == s) {
+                occupied = true;
+                break;
+            }
+        }
+        if (!occupied) {
             usedSlots.insert(s);
             return s;
         }
@@ -1159,7 +1312,8 @@ int Desktop::nearestFreeSlot(sf::Vector2f pos) const {
     for (int s = 0; s < GRID_COLS * maxRows; ++s) {
         bool occupied = false;
         for (auto icon : icons) {
-            if (icon->visible && icon->gridSlot == s && icon != draggingIcon) {
+            // 隐藏图标也要预留槽位，否则它解锁显示时会压在现有图标上。
+            if (icon->gridSlot == s && icon != draggingIcon) {
                 occupied = true; break;
             }
         }
@@ -1204,6 +1358,25 @@ void Desktop::loadIconPositions() {
             }
         }
     }
+    f.close();
+
+    // 旧版本允许多个图标保存到同一槽位。启动时统一去重，并把修正后的
+    // 位置写回文件，避免 Starship.exe 解锁后与还原文件重叠。
+    std::set<int> occupied;
+    bool corrected = false;
+    for (auto* icon : icons) {
+        int slot = icon->gridSlot;
+        if (slot < 0 || occupied.find(slot) != occupied.end()) {
+            slot = 0;
+            while (occupied.find(slot) != occupied.end()) ++slot;
+            icon->gridSlot = slot;
+            corrected = true;
+        }
+        occupied.insert(slot);
+        icon->position = slotPosition(slot);
+    }
+    usedSlots = occupied;
+    if (corrected) saveIconPositions();
 }
 
 Desktop::Desktop() : startSpr(startTex), wallSpr(wallTex) { g_Desktop = this; }
@@ -1338,6 +1511,9 @@ void Desktop::syncStoryVisuals() {
             if (other != ic && other->visible && other->gridSlot == ic->gridSlot) {
                 ic->gridSlot = nearestFreeSlot(ic->position);
                 if (ic->gridSlot >= 0) ic->position = slotPosition(ic->gridSlot);
+                usedSlots.clear();
+                for (auto* icon : icons)
+                    if (icon && icon->gridSlot >= 0) usedSlots.insert(icon->gridSlot);
                 saveIconPositions();
                 break;
             }
@@ -1378,6 +1554,7 @@ void Desktop::handleTaskbarClick(sf::Vector2f mp) {
             story.hasPerfectClear    = false;
             story.hasNormalClear     = false;
             story.rewardWindowCreated = false;
+            story.perfectRewardCreated = false;
             story.recycleBinUnlocked = false;
             story.hasDocClue         = false;
             story.hasBrowserClue     = false;
@@ -1467,6 +1644,9 @@ void Desktop::processEvents() {
                         if (newSlot < 0) newSlot = oldSlot; // fallback
                         icon->gridSlot = newSlot;
                         icon->position = slotPosition(newSlot);
+                        usedSlots.clear();
+                        for (auto* item : icons)
+                            if (item && item->gridSlot >= 0) usedSlots.insert(item->gridSlot);
                         icon->highlight = false;
                         draggingIcon = nullptr;
                         iconDragMoved = false;
@@ -1779,16 +1959,28 @@ void Desktop::run() {
                     Sfx::get().play(Sfx::Id::Perfect);
                     perfectSfxPlayed = true;
                 }
+                BrowserWindow* victoryBrowser = nullptr;
                 for (auto* w : openWindows) {
                     if (w && w->isOpen) {
                         if (auto* bw = dynamic_cast<BrowserWindow*>(w)) {
                             if (!bw->perfectVictory) {
                                 bw->showPerfectVictory();
-                                setActiveWindow(bw);
+                                victoryBrowser = bw;
                             }
                             break;
                         }
                     }
+                }
+                // 激活窗口会重排 openWindows，必须在遍历结束后执行，避免迭代器失效。
+                if (victoryBrowser) setActiveWindow(victoryBrowser);
+                // 完美结局：创建奖励窗口
+                if (!story.perfectRewardCreated) {
+                    for (auto* w : openWindows) {
+                        if (w->isOpen && w->title == "系统奖励") w->closeWindow();
+                    }
+                    addWindow(new RewardAnimWindow(
+                        {WIN_W / 2 - 410.f, WIN_H / 2 - 250.f}, 820.f, 500.f, systemFont));
+                    story.perfectRewardCreated = true;
                 }
             }
 
@@ -1798,14 +1990,21 @@ void Desktop::run() {
                     if (w->isOpen && w->title == "系统奖励") w->closeWindow();
                 }
                 addWindow(new RewardAnimWindow(
-                    {WIN_W / 2 - 250.f, WIN_H / 2 - 200.f}, 500.f, 400.f, systemFont));
+                    {WIN_W / 2 - 410.f, WIN_H / 2 - 250.f}, 820.f, 500.f, systemFont));
                 story.rewardWindowCreated = true;
             }
         }
 
-        auto it = std::remove_if(openWindows.begin(), openWindows.end(), [](PuzzleWindowBase* w){ return !w->isOpen; });
-        for (auto i = it; i != openWindows.end(); ++i) delete *i;
-        openWindows.erase(it, openWindows.end());
+        // openWindows 保存的是原始指针，不能在 remove_if 移动指针后删除尾区间：
+        // 尾区间可能包含仍被保留窗口的重复指针，进而留下悬空指针。
+        for (auto it = openWindows.begin(); it != openWindows.end();) {
+            if (!(*it)->isOpen) {
+                delete *it;
+                it = openWindows.erase(it);
+            } else {
+                ++it;
+            }
+        }
         updateTaskbar(); renderAll();
     }
 }
