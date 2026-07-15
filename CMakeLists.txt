@@ -15,6 +15,7 @@ FetchContent_MakeAvailable(SFML)
 add_executable(main WIN32 src/main.cpp src/DesktopGame.cpp)
 target_compile_features(main PRIVATE cxx_std_17)
 target_link_libraries(main PRIVATE SFML::Graphics SFML::Audio)
+set_target_properties(main PROPERTIES OUTPUT_NAME "StarshipWorkstation")
 
 # Ensure UTF-8 source encoding for Chinese UI strings (MSVC / MinGW)
 if(MSVC)

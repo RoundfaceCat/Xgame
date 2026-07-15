@@ -128,6 +128,7 @@ public:
     bool        hasPerfectClear     = false;
     bool        hasNormalClear      = false;
     bool        rewardWindowCreated = false; // 防止重复创建结局窗口
+    bool        perfectRewardCreated = false; // 完美结局奖励窗口
     bool        recycleBinUnlocked  = false; // 加密档案室解锁标志
     bool        hasDocClue          = false;
     bool        hasBrowserClue      = false;
@@ -214,6 +215,16 @@ public:
     std::string content;
     TextFile(const std::string& n, const std::string& c, const std::string& type = "txt") 
         : FileObject(n, type), content(c) {}
+    void open() override;
+};
+
+class ImageFile : public FileObject {
+public:
+    std::string imagePath;
+    std::string caption;
+
+    ImageFile(const std::string& n, const std::string& path, const std::string& imageCaption = "")
+        : FileObject(n, "image"), imagePath(path), caption(imageCaption) {}
     void open() override;
 };
 
@@ -309,6 +320,22 @@ public:
     void handleInput(const sf::Event& event) override;
 };
 
+class ImageViewerWindow : public PuzzleWindowBase {
+public:
+    sf::Texture imageTex;
+    sf::Sprite  imageSpr;
+    sf::Text    captionText;
+    std::string imagePath;
+    std::string caption;
+    bool        imageLoaded = false;
+
+    ImageViewerWindow(const std::string& fileTitle, const std::string& path,
+                      const std::string& imageCaption, sf::Vector2f p,
+                      float w, float h, const sf::Font& font);
+    void renderContent(sf::RenderWindow& win) override;
+    void handleInput(const sf::Event& event) override;
+};
+
 class BrowserWindow : public PuzzleWindowBase {
 public:
     sf::Text           addrText;
@@ -347,6 +374,7 @@ public:
     sf::Texture           texFile;
     sf::Texture           texExe;
     sf::Texture           texComputer;
+    sf::Texture           texImage;
 
     FileListWin(const std::string& winTitle, bool recycleBin,
                 sf::Vector2f p, float w, float h, const sf::Font& font);
@@ -401,8 +429,11 @@ public:
 class RewardAnimWindow : public PuzzleWindowBase {
 public:
     sf::Text           congratsText;
+    sf::Texture        rewardTex;
+    sf::Sprite         rewardSpr;
     sf::RectangleShape teslaFrame;
     sf::Clock          animationClock;
+    bool               hasRewardImage = false;
 
     RewardAnimWindow(sf::Vector2f p, float w, float h, const sf::Font& font);
     void renderContent(sf::RenderWindow& win) override;
@@ -555,7 +586,6 @@ public:
 
     void syncStoryVisuals();
     void hideShellMenu();
-
 private:
     void processEvents();
     void renderAll();
