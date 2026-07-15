@@ -1229,10 +1229,8 @@ void Desktop::init(sf::RenderWindow& win) {
         appIconTex.loadFromFile("D:/Xgame/Xgame/assets/app_icon.jpg");
     }
     appIconTex.setSmooth(true);
-    // Prefer bundled font, then common Chinese system fonts, then Latin fallback
+    // Use common Chinese system fonts, then Latin fallback
     const char* fontCandidates[] = {
-        "assets/fonts/NotoSansSC-Regular.otf",
-        "assets/fonts/SourceHanSansSC-Regular.otf",
         "C:\\Windows\\Fonts\\msyh.ttc",
         "C:\\Windows\\Fonts\\msyhbd.ttc",
         "C:\\Windows\\Fonts\\simsun.ttc",
