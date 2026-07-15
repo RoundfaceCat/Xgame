@@ -62,6 +62,8 @@ void drawCaptionButton(sf::RenderWindow& win, sf::FloatRect rect,
                        const sf::Font& font, const std::string& glyph,
                        sf::Color face, bool pressed = false);
 
+std::string wrapText(const std::string& str, const sf::Font& font, unsigned int charSize, float maxWidth, int maxLines);
+
 // ── Procedural XP-style UI sound effects ───────────────────────
 class Sfx {
 public:
@@ -318,6 +320,7 @@ public:
     bool               showSecretPage = false;
     bool               perfectVictory = false;  // 隐藏结局成功后浏览器变成通关页
     bool               editingAddr    = false;
+    int                cursorPos      = 0;
     const sf::Font*    winFont = nullptr;
     sf::Clock          blinkClock;
 
@@ -429,6 +432,7 @@ public:
     sf::Text    labelText;
     bool        selected  = false;
     bool        highlight = false;
+    const sf::Font* iconFont = nullptr;
     int         gridSlot  = -1;   // which grid slot this icon occupies (-1 = unassigned)
     std::string iconId;           // stable identifier for position saving
 
@@ -452,6 +456,13 @@ public:
 class IEBrowserIcon : public AppIconBase {
 public:
     IEBrowserIcon(sf::Vector2f p, const std::string& texPath, const sf::Font& font);
+    void onDoubleClick() override;
+};
+
+class TextFileIcon : public AppIconBase {
+public:
+    std::string content;
+    TextFileIcon(sf::Vector2f p, const std::string& texPath, const sf::Font& font, const std::string& n, const std::string& c);
     void onDoubleClick() override;
 };
 
