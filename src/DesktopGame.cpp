@@ -410,16 +410,7 @@ void PuzzleWindowBase::renderFrame(sf::RenderWindow& win) {
     frame.setPosition(position); frame.setSize(sf::Vector2f(width, height)); win.draw(frame); drawDoubleBevel(win, bounds(), true);
     titleBar.setPosition(sf::Vector2f(position.x + BORDER, position.y + BORDER)); titleBar.setSize(sf::Vector2f(width - 2*BORDER, TITLEBAR_H - BORDER));
     titleBar.setFillColor(isActive ? C::TitleActive : C::TitleInactive); win.draw(titleBar);
-    if (g_Desktop && g_Desktop->appIconTex.getSize().x > 0) {
-        sf::Sprite iconSpr(g_Desktop->appIconTex);
-        iconSpr.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f));
-        float scale = (TITLEBAR_H - BORDER * 2.f - 4.f) / (float)iconSpr.getTexture().getSize().y;
-        iconSpr.setScale(sf::Vector2f(scale, scale));
-        win.draw(iconSpr);
-        titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f + iconSpr.getGlobalBounds().size.x + 4.f, position.y + BORDER + 2.f));
-    } else {
-        titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f));
-    }
+    titleText.setPosition(sf::Vector2f(position.x + BORDER + 4.f, position.y + BORDER + 2.f));
     win.draw(titleText);
     drawCaptionButton(win, closeBtnRect(), *uiFont, "X", C::CloseBtn);
     if (canMaximize) drawCaptionButton(win, maxBtnRect(), *uiFont, isMaximized ? "❐" : "□", C::BevelMedium);
@@ -1225,10 +1216,13 @@ Desktop::~Desktop() {
 void Desktop::init(sf::RenderWindow& win) {
     renderWin = &win;
     Sfx::get().init();
-    if (!appIconTex.loadFromFile("assets/app_icon.jpg")) {
-        appIconTex.loadFromFile("D:/Xgame/Xgame/assets/app_icon.jpg");
+    sf::Image appIconImg;
+    if (!appIconImg.loadFromFile("assets/app_icon.png")) {
+        appIconImg.loadFromFile("D:/Xgame/Xgame/assets/app_icon.png");
     }
-    appIconTex.setSmooth(true);
+    if (appIconImg.getSize().x > 0) {
+        renderWin->setIcon(appIconImg.getSize(), appIconImg.getPixelsPtr());
+    }
     // Use common Chinese system fonts, then Latin fallback
     const char* fontCandidates[] = {
         "C:\\Windows\\Fonts\\msyh.ttc",
@@ -1612,16 +1606,7 @@ void Desktop::renderTaskbar() {
         sf::RectangleShape bline(sf::Vector2f(br.size.x, 1.f)); bline.setPosition(br.position); bline.setFillColor(sf::Color(255,255,255,50)); renderWin->draw(bline);
         bline.setPosition(sf::Vector2f(br.position.x, br.position.y+br.size.y-1.f)); bline.setFillColor(sf::Color(0,0,0,100)); renderWin->draw(bline);
         sf::Text t = vws[i]->titleText;
-        if (appIconTex.getSize().x > 0) {
-            sf::Sprite iconSpr(appIconTex);
-            iconSpr.setPosition(sf::Vector2f(br.position.x + 4.f, br.position.y + 4.f));
-            float scale = 16.f / iconSpr.getTexture().getSize().y;
-            iconSpr.setScale(sf::Vector2f(scale, scale));
-            renderWin->draw(iconSpr);
-            t.setPosition(sf::Vector2f(br.position.x + 4.f + iconSpr.getGlobalBounds().size.x + 4.f, br.position.y + 4.f));
-        } else {
-            t.setPosition(sf::Vector2f(br.position.x + 10.f, br.position.y + 4.f));
-        }
+        t.setPosition(sf::Vector2f(br.position.x + 10.f, br.position.y + 4.f));
         // Truncate by Unicode code points (not raw UTF-8 bytes)
         sf::String title = t.getString();
         if (title.getSize() > 8) {
