@@ -21,8 +21,10 @@ if(MSVC)
     target_compile_options(main PRIVATE /utf-8)
 else()
     target_compile_options(main PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
-    # Statically link MinGW runtimes so no DLLs (libstdc++-6.dll, etc.) are needed on other PCs
-    target_link_options(main PRIVATE -static -static-libgcc -static-libstdc++)
+    if(MINGW)
+        # Statically link MinGW runtimes so no DLLs (libstdc++-6.dll, etc.) are needed on Windows
+        target_link_options(main PRIVATE -static -static-libgcc -static-libstdc++)
+    endif()
 endif()
 
 # Always copy assets folder to output directory during build, even if source code hasn't changed
