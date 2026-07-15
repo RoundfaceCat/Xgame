@@ -12,7 +12,7 @@ FetchContent_Declare(SFML
     SYSTEM)
 FetchContent_MakeAvailable(SFML)
 
-add_executable(main src/main.cpp src/DesktopGame.cpp)
+add_executable(main WIN32 src/main.cpp src/DesktopGame.cpp)
 target_compile_features(main PRIVATE cxx_std_17)
 target_link_libraries(main PRIVATE SFML::Graphics SFML::Audio)
 
@@ -21,6 +21,8 @@ if(MSVC)
     target_compile_options(main PRIVATE /utf-8)
 else()
     target_compile_options(main PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
+    # Statically link MinGW runtimes so no DLLs (libstdc++-6.dll, etc.) are needed on other PCs
+    target_link_options(main PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
 
 # Always copy assets folder to output directory during build, even if source code hasn't changed
