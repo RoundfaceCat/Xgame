@@ -82,7 +82,7 @@ void Sfx::init() {
     buffers[static_cast<std::size_t>(I::Notify)]  = makeBeep(1046.f, 0.10f, 0.32f);
     buffers[static_cast<std::size_t>(I::Ending)]  = makeChord({523.f, 659.f, 784.f}, 0.55f, 0.45f);
     buffers[static_cast<std::size_t>(I::Perfect)] = makeChord({523.f, 659.f, 784.f, 1046.f}, 0.85f, 0.48f);
-    buffers[static_cast<std::size_t>(I::Boot)]    = makeChord({261.6f, 329.6f, 392.f, 523.2f, 659.3f}, 3.8f, 0.52f);
+    buffers[static_cast<std::size_t>(I::Boot)].loadFromFile("assets/boot.wav");
     ready = true;
 }
 
@@ -148,6 +148,41 @@ void drawCaptionButton(sf::RenderWindow& win, sf::FloatRect rect,
     t.setOrigin(sf::Vector2f(tr.position.x + tr.size.x / 2.f, tr.position.y + tr.size.y / 2.f));
     t.setPosition(sf::Vector2f(rect.position.x + rect.size.x / 2.f + (pressed ? 1.f : 0.f), rect.position.y + rect.size.y / 2.f + (pressed ? 1.f : 0.f)));
     win.draw(t);
+}
+
+std::string wrapText(const std::string& str, const sf::Font& font, unsigned int charSize, float maxWidth, int maxLines) {
+    if (str.empty()) return "";
+    sf::String sfStr = sf::String::fromUtf8(str.begin(), str.end());
+    sf::String sfResult;
+    sf::String sfCurrentLine;
+    sf::Text tester(font, "", charSize);
+    int lineCount = 1;
+
+    for (std::size_t i = 0; i < sfStr.getSize(); ++i) {
+        auto c = sfStr[i];
+        sfCurrentLine += c;
+        tester.setString(sfCurrentLine);
+        if (tester.getLocalBounds().size.x > maxWidth) {
+            if (maxLines > 0 && lineCount >= maxLines) {
+                sfCurrentLine.erase(sfCurrentLine.getSize() - 1, 1);
+                while(sfCurrentLine.getSize() > 0) {
+                    tester.setString(sfCurrentLine + "...");
+                    if (tester.getLocalBounds().size.x <= maxWidth) break;
+                    sfCurrentLine.erase(sfCurrentLine.getSize() - 1, 1);
+                }
+                sfResult += sfCurrentLine + "...";
+                auto u8str = sfResult.toUtf8();
+                return std::string(u8str.begin(), u8str.end());
+            }
+            sfCurrentLine.erase(sfCurrentLine.getSize() - 1, 1);
+            sfResult += sfCurrentLine + "\n";
+            sfCurrentLine = c;
+            lineCount++;
+        }
+    }
+    sfResult += sfCurrentLine;
+    auto u8str2 = sfResult.toUtf8();
+    return std::string(u8str2.begin(), u8str2.end());
 }
 
 bool StoryManager::tryUnlockArchive(const std::string& input) {
@@ -222,6 +257,14 @@ ContextMenu::ContextMenu() : UIComponent({0, 0}, 150.f, 0.f) {
 void ContextMenu::setFont(const sf::Font& font) { menuFont = &font; }
 void ContextMenu::show(sf::Vector2f p, const std::vector<MenuItem>& newItems) {
     items = newItems; itemTexts.clear(); position = p;
+    float maxWidth = 150.f;
+    for (const auto& it : items) {
+        sf::Text t(*menuFont, U8(it.label), 12u);
+        if (it.isDefault) t.setStyle(sf::Text::Bold);
+        float tw = t.getLocalBounds().size.x + 40.f;
+        if (tw > maxWidth) maxWidth = tw;
+    }
+    width = maxWidth;
     height = BORDER * 2 + items.size() * itemHeight;
     if (position.x + width > WIN_W) position.x = WIN_W - width;
     if (position.y + height > WIN_H - TASKBAR_H) position.y = WIN_H - TASKBAR_H - height;
@@ -404,6 +447,7 @@ void NotepadWindow::handleInput(const sf::Event& event) {}
 
 BrowserWindow::BrowserWindow(sf::Vector2f p, float w, float h, const sf::Font& font) : PuzzleWindowBase("Windows Internet Explorer", p, w, h, font), winFont(&font), addrText(font), contentText(font), statusText(font) {
     addressInput = "http://www.spacex.com/history";
+    cursorPos = addressInput.length();
     addrText.setFont(font); addrText.setCharacterSize(14); addrText.setFillColor(C::TextBlack); addrText.setString(U8(addressInput));
     contentText.setFont(font); contentText.setCharacterSize(14); contentText.setFillColor(C::TextBlack);
     statusText.setFont(font); statusText.setCharacterSize(12); statusText.setFillColor(C::TextBlack);
@@ -414,7 +458,9 @@ void BrowserWindow::renderContent(sf::RenderWindow& win) {
     sf::Text lbl(*winFont, U8("地址(D):"), 14u); lbl.setFillColor(C::TextBlack); lbl.setPosition(sf::Vector2f(cr.position.x + 5.f, cr.position.y + 10.f)); win.draw(lbl);
     addrBar.setPosition(sf::Vector2f(cr.position.x + 65.f, cr.position.y + 8.f)); addrBar.setSize(sf::Vector2f(cr.size.x - 130.f, 22.f)); win.draw(addrBar); drawDoubleBevel(win, addrBar.getGlobalBounds(), false);
     const bool cursorOn = editingAddr && ((int)(blinkClock.getElapsedTime().asSeconds() * 2) % 2 == 0);
-    addrText.setString(U8(addressInput + (cursorOn ? "|" : "")));
+    std::string disp = addressInput;
+    if (cursorOn) { disp.insert(cursorPos, "|"); }
+    addrText.setString(U8(disp));
     addrText.setPosition(sf::Vector2f(addrBar.getPosition().x + 5.f, addrBar.getPosition().y + 2.f)); win.draw(addrText);
     goBtn.setPosition(sf::Vector2f(cr.position.x + cr.size.x - 55.f, cr.position.y + 8.f)); goBtn.setSize(sf::Vector2f(45.f, 22.f)); win.draw(goBtn); drawDoubleBevel(win, goBtn.getGlobalBounds(), true);
     sf::Text goTxt(*winFont, U8("转到"), 12u); goTxt.setFillColor(C::TextBlack); goTxt.setPosition(sf::Vector2f(goBtn.getPosition().x + 10.f, goBtn.getPosition().y + 3.f)); win.draw(goTxt);
@@ -452,13 +498,18 @@ void BrowserWindow::renderContent(sf::RenderWindow& win) {
             "状态：成功进入轨道测试\n\n"
             "备注：本页面由 2008 年内部系统归档生成。\n"
             "Grok 早期训练日志中亦有相关记录。\n\n"
-            "--------------------------------\n"
-            "(页面底部小字：密钥后半段与特斯拉 Model S 出厂编号相关)\n"
-            "(提示：完整解开谜题可获得无限制 Grok 使用权 + 特斯拉兑换资格)"));
+            "--------------------------------"));
     }
     contentText.setPosition(sf::Vector2f(pageRect.position.x + 10.f, pageRect.position.y + 10.f)); win.draw(contentText);
+    
+    if (!perfectVictory && !showSecretPage) {
+        sf::Text hintText(*winFont, U8("(提示：密钥后半段与特斯拉 Model S 出厂编号相关。完整解谜可获神秘大奖)"), 12u);
+        hintText.setFillColor(sf::Color(120, 120, 120));
+        hintText.setPosition(sf::Vector2f(pageRect.position.x + 10.f, pageRect.position.y + pageRect.size.y - 30.f));
+        win.draw(hintText);
+    }
+    
     sf::RectangleShape sb(sf::Vector2f(cr.size.x, 20.f)); sb.setPosition(sf::Vector2f(cr.position.x, cr.position.y + cr.size.y - 20.f)); sb.setFillColor(C::StatusBar); win.draw(sb); drawDoubleBevel(win, sb.getGlobalBounds(), false);
-    statusText.setString(U8("完成")); statusText.setPosition(sf::Vector2f(sb.getPosition().x + 5.f, sb.getPosition().y + 2.f)); win.draw(statusText);
 }
 void BrowserWindow::handleInput(const sf::Event& event) {
     if (const auto* mb = event.getIf<sf::Event::MouseButtonPressed>(); mb && mb->button == sf::Mouse::Button::Left) {
@@ -467,10 +518,21 @@ void BrowserWindow::handleInput(const sf::Event& event) {
         if (goBtn.getGlobalBounds().contains(mp)) navigateToAddress();
     }
     if (editingAddr && event.is<sf::Event::TextEntered>()) {
-        if (event.getIf<sf::Event::TextEntered>()->unicode == 8 && !addressInput.empty()) addressInput.pop_back();
-        else if (event.getIf<sf::Event::TextEntered>()->unicode >= 32 && event.getIf<sf::Event::TextEntered>()->unicode < 128) addressInput += static_cast<char>(event.getIf<sf::Event::TextEntered>()->unicode);
+        if (event.getIf<sf::Event::TextEntered>()->unicode == 8 && cursorPos > 0) {
+            addressInput.erase(cursorPos - 1, 1);
+            cursorPos--;
+        }
+        else if (event.getIf<sf::Event::TextEntered>()->unicode >= 32 && event.getIf<sf::Event::TextEntered>()->unicode < 128) {
+            addressInput.insert(cursorPos, 1, static_cast<char>(event.getIf<sf::Event::TextEntered>()->unicode));
+            cursorPos++;
+        }
     }
-    if (editingAddr && event.is<sf::Event::KeyPressed>() && event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Enter) { navigateToAddress(); }
+    if (editingAddr && event.is<sf::Event::KeyPressed>()) {
+        auto code = event.getIf<sf::Event::KeyPressed>()->code;
+        if (code == sf::Keyboard::Key::Enter) { navigateToAddress(); }
+        else if (code == sf::Keyboard::Key::Left && cursorPos > 0) { cursorPos--; }
+        else if (code == sf::Keyboard::Key::Right && cursorPos < (int)addressInput.length()) { cursorPos++; }
+    }
 }
 void BrowserWindow::navigateToAddress() {
     // Normalize common prefixes for secret page
@@ -503,12 +565,9 @@ void BrowserWindow::showPerfectVictory() {
 
 FileListWin::FileListWin(const std::string& winTitle, bool recycleBin, sf::Vector2f p, float w, float h, const sf::Font& font) : PuzzleWindowBase(winTitle, p, w, h, font), isRecycleBinMode(recycleBin), winFont(&font), restoreBtnText(font) {
     folderPath = recycleBin ? "回收站" : "C:\\Documents and Settings\\Elon\\My Documents";
-    if (recycleBin) {
-        restoreBtn.setFillColor(C::BevelMedium); restoreBtnText.setFont(font); restoreBtnText.setCharacterSize(12); restoreBtnText.setFillColor(C::TextBlack); restoreBtnText.setString(U8("还原选定项目"));
-    }
     texFolder.loadFromFile("assets/folder.png"); texFolder.setSmooth(true);
     texFile.loadFromFile("assets/notepad.png"); texFile.setSmooth(true);
-    texExe.loadFromFile("assets/start.png"); texExe.setSmooth(true);
+    texExe.loadFromFile("assets/start_exe.png"); texExe.setSmooth(true);
     texComputer.loadFromFile("assets/computer.png"); texComputer.setSmooth(true);
 }
 FileListWin::~FileListWin() { for (auto f : files) delete f; files.clear(); }
@@ -518,10 +577,6 @@ void FileListWin::renderContent(sf::RenderWindow& win) {
     sf::FloatRect cr = clientRect();
     sf::RectangleShape addrBg(sf::Vector2f(cr.size.x, 35.f)); addrBg.setPosition(cr.position); addrBg.setFillColor(C::StatusBar); win.draw(addrBg);
     sf::Text addrLbl(*winFont, U8("地址(D): " + folderPath), 13u); addrLbl.setFillColor(C::TextBlack); addrLbl.setPosition(sf::Vector2f(cr.position.x + 10.f, cr.position.y + 9.f)); win.draw(addrLbl);
-    if (isRecycleBinMode) {
-        restoreBtn.setSize(sf::Vector2f(120.f, 22.f)); restoreBtn.setPosition(sf::Vector2f(cr.position.x + cr.size.x - 130.f, cr.position.y + 6.f)); win.draw(restoreBtn); drawDoubleBevel(win, restoreBtn.getGlobalBounds(), true);
-        restoreBtnText.setPosition(sf::Vector2f(restoreBtn.getPosition().x + 15.f, restoreBtn.getPosition().y + 3.f)); win.draw(restoreBtnText);
-    }
     sf::FloatRect listRect(sf::Vector2f(cr.position.x, cr.position.y + 35.f), sf::Vector2f(cr.size.x, cr.size.y - 35.f));
     sf::RectangleShape listBg(listRect.size); listBg.setPosition(listRect.position); listBg.setFillColor(C::ClientWhite); win.draw(listBg); drawDoubleBevel(win, listRect, false);
 
@@ -587,9 +642,7 @@ void FileListWin::renderContent(sf::RenderWindow& win) {
     constexpr float CELL_H = 96.f;
     float sx = listRect.position.x + 20.f; float sy = listRect.position.y + 16.f;
     for (size_t i = 0; i < files.size(); ++i) {
-        if ((int)i == selectedIdx) {
-            sf::RectangleShape sel(sf::Vector2f(CELL_W, CELL_H)); sel.setPosition(sf::Vector2f(sx - 8.f, sy - 4.f)); sel.setFillColor(C::SelectIcon); win.draw(sel);
-        }
+        // Selection box drawn LATER to accommodate dynamic height
         const sf::Texture* currentTex = &texFile;
         if (files[i]->iconType == "locked") {
             currentTex = &texFolder;
@@ -607,9 +660,31 @@ void FileListWin::renderContent(sf::RenderWindow& win) {
         if (isRecycleBinMode && files[i]->iconType != "restored" &&
             !StoryManager::getInstance().keyPart2Restored)
             displayName = displayName + " (已删除)";
-        sf::Text fn(*winFont, U8(displayName), 14u);
+            
+        float maxTextW = CELL_W - 16.f;
+        std::string wrapped = wrapText(displayName, *winFont, 14, maxTextW, ((int)i == selectedIdx) ? 0 : 2);
+        
+        sf::Text fn(*winFont, U8(wrapped), 14u);
         fn.setFillColor(C::TextBlack);
-        fn.setPosition(sf::Vector2f(sx + (CELL_W - 16.f) / 2.f - fn.getLocalBounds().size.x / 2.f, sy + ICON_DRAW_SIZE + 4.f));
+        
+        // Centered horizontally, but could be multi-line
+        sf::FloatRect bounds = fn.getLocalBounds();
+        fn.setPosition(sf::Vector2f(sx + (CELL_W - 16.f) / 2.f - bounds.size.x / 2.f, sy + ICON_DRAW_SIZE + 4.f));
+        
+        // If selected, expand the selection box dynamically
+        if ((int)i == selectedIdx) {
+            float boxHeight = ICON_DRAW_SIZE + 4.f + bounds.size.y + 6.f;
+            if (boxHeight < CELL_H - 8.f) boxHeight = CELL_H - 8.f;
+            sf::RectangleShape sel(sf::Vector2f(CELL_W, boxHeight)); 
+            sel.setPosition(sf::Vector2f(sx - 8.f, sy - 4.f)); 
+            sel.setFillColor(C::SelectIcon); 
+            win.draw(sel);
+            
+            // Re-draw icon over the selection box since we draw selection late
+            iconSpr.setColor(files[i]->iconType == "restored" ? sf::Color(255, 255, 255, 200) : sf::Color::White);
+            win.draw(iconSpr);
+        }
+        
         win.draw(fn);
 
         sx += CELL_W;
@@ -683,18 +758,37 @@ void FileListWin::openSelectedFile() {
 void FileListWin::restoreSelectedFile() {
     if (selectedIdx < 0 || selectedIdx >= (int)files.size()) return;
     if (!isRecycleBinMode) return;
-    // 仅对目标文件触发剧情推进（防止误操作）
-    const std::string& fname = files[selectedIdx]->name;
+    
+    const std::string fname = files[selectedIdx]->name;
+    // 仅对目标文件触发剧情推进
     if (fname.find("特斯拉") != std::string::npos || fname.find("编号") != std::string::npos) {
         StoryManager::getInstance().onKeyPart2Restored();
     }
-    if (files[selectedIdx]->iconType == "txt" || files[selectedIdx]->iconType == "deleted")
-        files[selectedIdx]->iconType = "restored";
-    if (g_Desktop)
+    
+    std::string content = "";
+    if (auto* delFile = dynamic_cast<DeletedFile*>(files[selectedIdx])) {
+        content = delFile->content;
+    }
+    
+    // Remove from recycle bin
+    delete files[selectedIdx];
+    files.erase(files.begin() + selectedIdx);
+    selectedIdx = -1;
+    
+    // Add to desktop
+    if (g_Desktop) {
+        TextFileIcon* restoredIcon = new TextFileIcon({0,0}, "assets/notepad.png", *winFont, fname, content);
+        g_Desktop->icons.push_back(restoredIcon);
+        // allocate grid slot
+        restoredIcon->gridSlot = g_Desktop->allocateSlot();
+        restoredIcon->position = g_Desktop->slotPosition(restoredIcon->gridSlot);
+        g_Desktop->saveIconPositions();
+        
         g_Desktop->addWindow(new MsgBoxWin(
             "回收站",
-            "文件已还原成功！\n\n现在可以双击打开查看内容，\n获取密钥后半段（2012），\n然后拼接完整密钥 202304202012。\n\n桌面已解锁 Starship.exe 彩蛋程序。",
+            "文件已还原到桌面！\n\n现在可以双击打开查看内容，\n获取密钥后半段（2012），\n然后拼接完整密钥 202304202012。\n\n桌面已解锁 Starship.exe 彩蛋程序。",
             {position.x + 50, position.y + 50}, 380, 200, *winFont));
+    }
     refreshFiles();
 }
 void FileListWin::refreshFiles() {
@@ -841,7 +935,7 @@ void RewardAnimWindow::renderContent(sf::RenderWindow& win) {
 void RewardAnimWindow::handleInput(const sf::Event& event) {}
 
 MsgBoxWin::MsgBoxWin(const std::string& boxTitle, const std::string& message, sf::Vector2f p, float w, float h, const sf::Font& font) : PuzzleWindowBase(boxTitle, p, w, h, font), msgText(font), okBtnText(font) {
-    isModal = true; canMaximize = false; canMinimize = false; msgText.setFont(font); msgText.setCharacterSize(14); msgText.setFillColor(C::TextBlack); msgText.setString(U8(message));
+    isModal = false; canMaximize = false; canMinimize = false; msgText.setFont(font); msgText.setCharacterSize(14); msgText.setFillColor(C::TextBlack); msgText.setString(U8(message));
     okBtn.setFillColor(C::BevelMedium); okBtnText.setFont(font); okBtnText.setCharacterSize(12); okBtnText.setFillColor(C::TextBlack); okBtnText.setString(U8("确定"));
 }
 void MsgBoxWin::renderContent(sf::RenderWindow& win) {
@@ -858,23 +952,25 @@ void MsgBoxWin::handleInput(const sf::Event& event) {
 // ═══════════════════════════════════════════════════════════════
 // 5. AppIconBase 体系实现
 // ═══════════════════════════════════════════════════════════════
-AppIconBase::AppIconBase(sf::Vector2f p, const std::string& lbl, const std::string& texPath, const sf::Font& font) : UIComponent(p, ICON_W, ICON_CELL_H), label(lbl), labelText(font), iconSpr(iconTex) {
+AppIconBase::AppIconBase(sf::Vector2f p, const std::string& lbl, const std::string& texPath, const sf::Font& font) : UIComponent(p, ICON_W, ICON_CELL_H), label(lbl), labelText(font), iconSpr(iconTex), iconFont(&font) {
     sf::Image img;
     if (img.loadFromFile(texPath)) {
-        
         (void)iconTex.loadFromImage(img); iconSpr.setTexture(iconTex, true);
-        iconSpr.setScale(sf::Vector2f(ICON_W / (float)iconTex.getSize().x, ICON_H / (float)iconTex.getSize().y));
+        float scale = std::min(ICON_W / (float)iconTex.getSize().x, ICON_H / (float)iconTex.getSize().y);
+        iconSpr.setScale(sf::Vector2f(scale, scale));
     }
     labelText.setFont(font); labelText.setCharacterSize(16); labelText.setString(U8(label)); labelText.setFillColor(C::TextWhite);
 }
 void AppIconBase::render(sf::RenderWindow& win) {
+    std::string wrapped = wrapText(label, *iconFont, labelText.getCharacterSize(), width + 10.f, selected ? 0 : 2);
+    labelText.setString(U8(wrapped));
+
     sf::FloatRect tr = labelText.getLocalBounds();
     float tx = position.x + width/2.f - tr.size.x/2.f;
     float ty = position.y + ICON_H + 4.f;
     labelText.setPosition(sf::Vector2f(tx, ty));
 
     if (selected || highlight) {
-        // Single unified box: from just above icon to just below label text
         const float padX = 5.f;
         const float boxTop    = position.y + 2.f;
         const float boxBottom = ty + tr.size.y + 4.f;
@@ -887,7 +983,9 @@ void AppIconBase::render(sf::RenderWindow& win) {
         win.draw(selBox);
     }
 
-    iconSpr.setPosition(sf::Vector2f(position.x + (width - ICON_W)/2.f, position.y + 4.f));
+    float scaledW = iconTex.getSize().x * iconSpr.getScale().x;
+    float scaledH = iconTex.getSize().y * iconSpr.getScale().y;
+    iconSpr.setPosition(sf::Vector2f(position.x + (width - scaledW)/2.f, position.y + (ICON_H - scaledH)/2.f + 4.f));
     win.draw(iconSpr);
 
     if (!selected) {
@@ -943,13 +1041,21 @@ void MyDocumentsIcon::buildContextMenu(std::vector<MenuItem>& out) {
     out.insert(out.begin() + 2, {"提示:星舰首飞藏在网页，密码不止一组数字", nullptr, false});
 }
 
-IEBrowserIcon::IEBrowserIcon(sf::Vector2f p, const std::string& texPath, const sf::Font& font) : AppIconBase(p, "Internet Explorer", texPath, font) {}
+IEBrowserIcon::IEBrowserIcon(sf::Vector2f p, const std::string& texPath, const sf::Font& font) : AppIconBase(p, "IE浏览器", texPath, font) {}
 void IEBrowserIcon::onDoubleClick() {
     if (!g_Desktop) return;
     Sfx::get().play(Sfx::Id::Open);
     StoryManager::getInstance().markBrowserClueSeen();
     if (g_Desktop->activateExisting("Windows Internet Explorer")) return;
     g_Desktop->addWindow(new BrowserWindow({150, 150}, 600, 450, g_Desktop->systemFont));
+}
+
+TextFileIcon::TextFileIcon(sf::Vector2f p, const std::string& texPath, const sf::Font& font, const std::string& n, const std::string& c) : AppIconBase(p, n, texPath, font), content(c) {}
+void TextFileIcon::onDoubleClick() {
+    if (!g_Desktop) return;
+    Sfx::get().play(Sfx::Id::Open);
+    if (g_Desktop->activateExisting(label)) return;
+    g_Desktop->addWindow(new NotepadWindow(label, content, {100, 100}, 500, 400, g_Desktop->systemFont));
 }
 
 RecycleBinIcon::RecycleBinIcon(sf::Vector2f p, const std::string& texPath, const sf::Font& font) : AppIconBase(p, "回收站", texPath, font) {}
@@ -1182,7 +1288,7 @@ void Desktop::init(sf::RenderWindow& win) {
     secretIcon->visible = false; // unlocked via archive password
     icons.push_back(secretIcon);
 
-    rewardIcon = new TeslaExeIcon({0,0}, "assets/start.png", systemFont);
+    rewardIcon = new TeslaExeIcon({0,0}, "assets/start_exe.png", systemFont);
     assignSlot(rewardIcon, "TeslaExe"); rewardIcon->visible = false; icons.push_back(rewardIcon);
 
     // Load saved positions (overrides default grid assignments)
@@ -1454,19 +1560,35 @@ void Desktop::processEvents() {
                         for (auto i2 : icons) i2->selected = false;
                         if (mb->button == sf::Mouse::Button::Right) {
                             std::vector<MenuItem> items;
-                            items.push_back({"查看(I)", nullptr, false}); 
+                            // 排列图标（禁用，仅展示）
+                            items.push_back({"排列图标(I)", nullptr, false});
+                            // 刷新
                             items.push_back({"刷新(E)", [this]() {
+                                syncStoryVisuals();
+                                for (auto i2 : icons) i2->selected = false;
                                 renderWin->clear(C::DesktopBg);
                                 if (hasWallpaper) renderWin->draw(wallSpr);
                                 renderTaskbar();
                                 renderWin->display();
-                                sf::sleep(sf::milliseconds(100));
-                            }, true}); 
-                            items.push_back({"", nullptr, false, true}); 
-                            // 桌面右键「属性」现在会打开系统属性窗口（与我的电脑一致，避免无响应）
+                                sf::sleep(sf::milliseconds(120));
+                            }, true});
+                            items.push_back({"", nullptr, false, true}); // separator
+                            // 新建文件夹（弹提示）
+                            items.push_back({"新建文件夹(F)", [this]() {
+                                Sfx::get().play(Sfx::Id::Error);
+                                addWindow(new MsgBoxWin(
+                                    "系统提示",
+                                    "操作失败：\n系统权限不足，无法在此位置创建新文件夹。",
+                                    {300, 250}, 320, 150, systemFont));
+                            }, true});
+                            items.push_back({"", nullptr, false, true}); // separator
+                            // 桌面右键「属性」打开显示属性（区分于我的电脑的系统属性）
                             items.push_back({"属性(R)", [this]() {
-                                if (activateExisting("系统属性")) return;
-                                addWindow(new SystemPropWin({100, 100}, 400, 450, systemFont));
+                                if (activateExisting("显示 属性")) return;
+                                addWindow(new MsgBoxWin(
+                                    "显示 属性",
+                                    "主题：Windows XP（经典）\n分辨率：1280 x 800\n色彩：32 位\n\n此工作站的显示设置已被锁定。",
+                                    {280, 200}, 320, 200, systemFont));
                             }, true});
                             shellMenu.show(mp, items);
                         }
