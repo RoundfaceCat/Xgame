@@ -1217,8 +1217,8 @@ void Desktop::init(sf::RenderWindow& win) {
     renderWin = &win;
     Sfx::get().init();
     sf::Image appIconImg;
-    if (!appIconImg.loadFromFile("assets/app_icon.jpg")) {
-        appIconImg.loadFromFile("D:/Xgame/Xgame/assets/app_icon.jpg");
+    if (!appIconImg.loadFromFile("assets/app_icon.png")) {
+        appIconImg.loadFromFile("D:/Xgame/Xgame/assets/app_icon.png");
     }
     if (appIconImg.getSize().x > 0) {
         renderWin->setIcon(appIconImg.getSize(), appIconImg.getPixelsPtr());
