@@ -27,7 +27,7 @@ constexpr float GRID_MARGIN_Y    = 10.f;    // top margin
 constexpr int   GRID_COLS        = 5;       // default icon columns (left side)
 constexpr std::string_view ICON_POS_FILE = "icon_positions.ini";
 constexpr float TITLEBAR_H       = 22.f;
-constexpr float BORDER           = 3.f;
+constexpr float BORDER           = 20.f;
 constexpr float CAPTION_BTN      = 16.f;
 constexpr int   DOUBLE_CLICK_MS  = 500;
 constexpr float TASK_BTN_W       = 160.f;
@@ -499,7 +499,7 @@ public:
     std::vector<AppIconBase*> icons;
     
     // Global App Icon (for window titlebars and taskbar)
-    sf::Texture       appIconTex;
+
     std::vector<PuzzleWindowBase*>  openWindows;
     // 延迟添加的窗口队列（防止在 processEvents 迭代/回调中直接 push_back 导致闪退）
     std::vector<PuzzleWindowBase*>  pendingWindows;
